@@ -1,0 +1,20 @@
+```json
+{
+  "name": "@admanager/product-catalog-module",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Conceptual package.json for ProductCatalog module. Dependencies are managed at the project root.",
+  "dependencies": {
+    "class-validator": "^0.14.0",
+    "class-transformer": "^0.5.1",
+    "uuid": "^9.0.1",
+    "fast-xml-parser": "^4.3.2",
+    "papaparse": "^5.4.1",
+    "@ssut/nestjs-sqs": "^2.4.1"
+  },
+  "devDependencies": {
+    "@types/uuid": "^9.0.7",
+    "@types/papaparse": "^5.3.10"
+  }
+}
+```
