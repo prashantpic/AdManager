@@ -1,0 +1,63 @@
+/* REQ-FE-004: Consistent UI through base styles */
+/* REQ-FE-010: Responsive Design base setup */
+
+/* Basic Reset (Consider using a more comprehensive reset like normalize.css or MUI's CssBaseline which is already included) */
+body, html {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f4f6f8; /* A light grey background, can be overridden by theme */
+  color: #333; /* Default text color, can be overridden by theme */
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Example: Define some global CSS variables if not fully managed by MUI theme */
+:root {
+  /* --primary-color: #1976d2; */ /* Example, prefer MUI theme for this */
+  /* --secondary-color: #dc004e; */ /* Example, prefer MUI theme for this */
+}
+
+/* Improve default link styling */
+a {
+  text-decoration: none;
+  /* color: var(--primary-color); */ /* Prefer MUI theme for this */
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Global scrollbar styling (optional, use with caution for cross-browser compatibility) */
+/*
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+*/
