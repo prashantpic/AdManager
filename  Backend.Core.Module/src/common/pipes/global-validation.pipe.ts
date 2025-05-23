@@ -2,16 +2,11 @@ import {
   ValidationPipe,
   Injectable,
   ArgumentMetadata,
-  BadRequestException, // Will be replaced by ValidationException
   HttpStatus,
+  HttpException,
 } from '@nestjs/common';
-import { validate, ValidationError } from 'class-validator';
-import { plainToInstance } from 'class-transformer';
-
-// Placeholder: Actual ValidationException will be used once available.
+import { ValidationError } from 'class-validator';
 import { ValidationException } from '../exceptions/validation.exception';
-// Placeholder: Actual ErrorCodesConstants will be used once available.
-// import { ErrorCodesConstants } from '../constants/error-codes.constants';
 
 @Injectable()
 export class GlobalValidationPipe extends ValidationPipe {
@@ -20,61 +15,47 @@ export class GlobalValidationPipe extends ValidationPipe {
       transform: true, // Automatically transform payloads to DTO instances
       whitelist: true, // Strip properties that do not have any decorators
       forbidNonWhitelisted: true, // Throw an error if non-whitelisted properties are present
-      transformOptions: {
-        enableImplicitConversion: true, // Allow conversion of basic types
-      },
       exceptionFactory: (errors: ValidationError[]) => {
-        // REQ-14-006, REQ-15-013: Throw custom ValidationException
         const formattedErrors = this.formatErrors(errors);
-        return new ValidationException(
-            formattedErrors,
-            'Validation failed',
-            // ErrorCodesConstants.VALIDATION_ERROR // Use actual constant
-            'VALIDATION_ERROR'
-        );
+        return new ValidationException(formattedErrors);
       },
+      errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY, // Default, but ValidationException will override
     });
   }
 
-  private formatErrors(errors: ValidationError[]): Record<string, string[]> {
-    const formattedErrors: Record<string, string[]> = {};
-    errors.forEach(err => {
-      if (err.constraints) {
-        formattedErrors[err.property] = Object.values(err.constraints);
+  public async transform(value: any, metadata: ArgumentMetadata): Promise<any> {
+    // For GET requests with query parameters, class-transformer might not run if `expectedType` is primitive.
+    // We ensure DTOs are always processed.
+    if (!metadata.metatype || !this.toValidate(metadata)) {
+        return value;
+    }
+    try {
+      return await super.transform(value, metadata);
+    } catch (e) {
+      if (e instanceof ValidationException) {
+        throw e;
       }
-      // Recursively format nested errors if any
-      if (err.children && err.children.length > 0) {
-        const nestedErrors = this.formatErrors(err.children);
-        for (const key in nestedErrors) {
-            formattedErrors[`${err.property}.${key}`] = nestedErrors[key];
-        }
+      // Fallback for other errors during validation, though exceptionFactory should catch most
+      if (e instanceof HttpException) {
+          throw e; // rethrow if it's already an HttpException (e.g. from super.transform if not using our factory)
       }
-    });
-    return formattedErrors;
+      // This path should ideally not be hit if class-validator errors are correctly handled by exceptionFactory
+      throw new ValidationException([{ property: 'unknown', constraints: { unhandled: e.message || 'Unhandled validation error' } }]);
+    }
   }
 
-  // The 'validate' method is part of the parent ValidationPipe and uses the options provided.
-  // We override it here only if we need extremely custom logic not covered by options.
-  // For now, relying on the parent's `validate` method with our `exceptionFactory`.
-  // public async transform(value: any, metadata: ArgumentMetadata): Promise<any> {
-  //   const { metatype } = metadata;
-  //   if (!metatype || !this.toValidate(metadata)) {
-  //     return value;
-  //   }
-  //   const object = plainToInstance(metatype, value);
-  //   const errors = await validate(object, this.validatorOptions); // validatorOptions from constructor
-  //   if (errors.length > 0) {
-  //     throw this.exceptionFactory(errors); // Uses the configured exceptionFactory
-  //   }
-  //   return this.isTransformEnabled ? object : value; // isTransformEnabled from constructor
-  // }
-
-  // private toValidate(metadata: ArgumentMetadata): boolean {
-  //   const { metatype, type } = metadata;
-  //   if (type === 'custom') {
-  //     return false;
-  //   }
-  //   const types: Function[] = [String, Boolean, Number, Array, Object];
-  //   return !types.includes(metatype);
-  // }
+  private formatErrors(errors: ValidationError[]): any[] {
+    return errors.map((err) => {
+      // Preserve the nested structure if present
+      const formatChildError = (childError: ValidationError): any => {
+        return {
+          property: childError.property,
+          value: childError.value,
+          constraints: childError.constraints,
+          children: childError.children && childError.children.length > 0 ? this.formatErrors(childError.children) : undefined,
+        };
+      };
+      return formatChildError(err);
+    });
+  }
 }

@@ -4,125 +4,114 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
-  Logger, // Using NestJS Logger as a fallback if LoggingService is not yet available
+  Logger, // Using NestJS Logger as a fallback if LoggingService is not yet available/injected
 } from '@nestjs/common';
-import { HttpAdapterHost } from '@nestjs/core';
-
-// Placeholder: Actual LoggingService will be injected once available.
-// import { LoggingService } from '../../logging/logging.service';
+import { Request, Response } from 'express';
 import { ValidationException } from './validation.exception';
 import { BaseException } from './base.exception';
-// Placeholder: Actual ErrorCodesConstants will be used once available.
-// import { ErrorCodesConstants } from '../constants/error-codes.constants';
+// Assuming LoggingService will be in this path, adjust if different
+// import { LoggingService } from '../../logging/logging.service';
 
-interface IErrorResponse {
+interface ErrorResponse {
   statusCode: number;
   timestamp: string;
   path: string;
-  message: string | object;
+  message: string;
   errorCode?: string;
   details?: any;
 }
 
 @Catch()
 export class GlobalHttpExceptionFilter implements ExceptionFilter {
-  // Using NestJS Logger temporarily. Replace with LoggingService when available.
+  // constructor(private readonly loggingService: LoggingService) {}
+  // Using NestJS Logger for now if LoggingService DI is complex at this stage of generation
   private readonly logger = new Logger(GlobalHttpExceptionFilter.name);
-  // constructor(private readonly loggingService: LoggingService, private readonly httpAdapterHost: HttpAdapterHost) {}
-  constructor(private readonly httpAdapterHost: HttpAdapterHost) {} // Remove LoggingService if not using it directly here
 
   catch(exception: unknown, host: ArgumentsHost): void {
-    const { httpAdapter } = this.httpAdapterHost;
     const ctx = host.switchToHttp();
-    const request = ctx.getRequest();
-    const response = ctx.getResponse();
+    const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
 
     let statusCode: number;
-    let message: string | object;
+    let message: string;
     let errorCode: string | undefined;
     let details: any | undefined;
 
-    const path = httpAdapter.getRequestUrl(request);
-    const timestamp = new Date().toISOString();
-
-    if (exception instanceof ValidationException) {
+    if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
-      message = exception.getResponse()['message'] || 'Validation failed';
-      errorCode = exception.getErrorCode() || 'VALIDATION_ERROR'; // Use actual constant
-      details = exception.getResponse()['errors'] || exception.getValidationErrors();
-      this.logger.warn(
-        `ValidationException: ${message} - Path: ${path} - Details: ${JSON.stringify(details)}`,
-        exception.stack,
-        GlobalHttpExceptionFilter.name,
-      );
-    } else if (exception instanceof BaseException) {
-      statusCode = exception.getStatus();
-      message = exception.getResponse()['message'] || exception.message;
-      errorCode = exception.getErrorCode();
-      details = exception.getResponse()['details'];
-      this.logger.error(
-        `BaseException: ${message} - Code: ${errorCode} - Path: ${path}`,
-        exception.stack,
-        GlobalHttpExceptionFilter.name,
-      );
-    } else if (exception instanceof HttpException) {
-      statusCode = exception.getStatus();
-      const exceptionResponse = exception.getResponse();
-      if (typeof exceptionResponse === 'string') {
-        message = exceptionResponse;
-      } else if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
-        message = (exceptionResponse as any).message || 'An HTTP error occurred';
-        errorCode = (exceptionResponse as any).error; // Or a more specific property
-        details = (exceptionResponse as any).details || (exceptionResponse as any).errors;
+      const errorResponse = exception.getResponse();
+      if (typeof errorResponse === 'string') {
+        message = errorResponse;
+      } else if (typeof errorResponse === 'object' && errorResponse !== null) {
+        message = (errorResponse as any).message || exception.message;
+        errorCode = (errorResponse as any).errorCode; // For BaseException
+        details = (errorResponse as any).details || (errorResponse as any).errors; // For ValidationException or custom details
       } else {
-        message = 'An unexpected HTTP error occurred';
+        message = exception.message;
       }
+
+      if (exception instanceof ValidationException) {
+        errorCode = exception.errorCode || 'VALIDATION_ERROR';
+        details = exception.getResponse()['errors'] || exception.getResponse()['details'] || exception.getValidationErrors();
+      } else if (exception instanceof BaseException) {
+        errorCode = exception.errorCode;
+      }
+    } else if (exception instanceof Error) {
+      statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
+      message = 'Internal server error';
+      // this.loggingService.error(exception.message, exception.stack, `${request.method} ${request.url}`);
       this.logger.error(
-        `HttpException: ${message} - Status: ${statusCode} - Path: ${path}`,
+        `Unhandled error: ${exception.message}`,
         exception.stack,
-        GlobalHttpExceptionFilter.name,
+        `${request.method} ${request.url}`,
       );
     } else {
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
-      message = 'Internal server error';
-      errorCode = 'INTERNAL_SERVER_ERROR'; // Use actual constant
+      message = 'An unexpected error occurred';
+      // this.loggingService.error('Unexpected error', undefined, `${request.method} ${request.url}`, exception);
       this.logger.error(
-        `UnhandledException: ${(exception as Error).message || 'Unknown error'} - Path: ${path}`,
-        (exception as Error).stack,
-        GlobalHttpExceptionFilter.name,
+        'Unexpected error',
+        undefined,
+        `${request.method} ${request.url}`,
       );
-      if (process.env.NODE_ENV !== 'production') {
-        details = {
-          name: (exception as Error).name,
-          message: (exception as Error).message,
-          stack: (exception as Error).stack,
-        };
-      }
+    }
+    
+    // Ensure statusCode is set
+    if (!statusCode) {
+        statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     }
 
-    const responseBody: IErrorResponse = {
+
+    // Log detailed error for HttpExceptions as well
+    if (exception instanceof HttpException) {
+        // this.loggingService.error(
+        //   `HTTP Exception: ${message}`,
+        //   exception.stack,
+        //   `${request.method} ${request.url} - Status: ${statusCode}`,
+        //   details || exception.getResponse(),
+        // );
+         this.logger.error(
+           `HTTP Exception: ${message} - Path: ${request.url} - Method: ${request.method}`,
+           exception.stack,
+           `${GlobalHttpExceptionFilter.name} - Status: ${statusCode}`,
+         );
+    }
+
+
+    const errorResponseBody: ErrorResponse = {
       statusCode,
-      timestamp,
-      path,
+      timestamp: new Date().toISOString(),
+      path: request.url,
       message,
     };
 
     if (errorCode) {
-      responseBody.errorCode = errorCode;
+      errorResponseBody.errorCode = errorCode;
     }
     if (details) {
-      responseBody.details = details;
+      errorResponseBody.details = details;
     }
 
-    // TODO: Integrate with actual LoggingService (REQ-16-025, REQ-16-026)
-    // this.loggingService.error(message, exception.stack, GlobalHttpExceptionFilter.name, {
-    //     path,
-    //     method: request.method,
-    //     statusCode,
-    //     ...(errorCode && { errorCode }),
-    //     ...(details && { details }),
-    // });
-
-    httpAdapter.reply(response, responseBody, statusCode);
+    response.status(statusCode).json(errorResponseBody);
   }
 }
