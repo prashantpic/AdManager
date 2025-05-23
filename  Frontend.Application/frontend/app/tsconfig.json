@@ -10,17 +10,17 @@
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
-    "moduleResolution": "Node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "src/*": ["src/*"]
     },
     "types": ["jest", "node"]
   },
-  "include": ["src", "**/*.ts", "**/*.tsx"],
+  "include": ["src", "vite.config.ts", "postcss.config.js", ".eslintrc.cjs", ".prettierrc.cjs"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

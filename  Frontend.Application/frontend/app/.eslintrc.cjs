@@ -3,18 +3,18 @@ module.exports = {
   env: {
     browser: true,
     es2021: true,
+    node: true,
     jest: true,
   },
   extends: [
     'eslint:recommended',
-    'plugin:@typescript-eslint/recommended',
     'plugin:react/recommended',
+    'plugin:react/jsx-runtime', // For new JSX transform
     'plugin:react-hooks/recommended',
-    'plugin:jsx-a11y/recommended',
-    'plugin:import/recommended',
-    'plugin:import/typescript',
-    'prettier', // Make sure this is last to override other configs
-    'plugin:prettier/recommended',
+    'plugin:@typescript-eslint/recommended',
+    // 'plugin:@typescript-eslint/recommended-requiring-type-checking', // Consider adding for stricter rules
+    'plugin:i18next/recommended',
+    'plugin:prettier/recommended', // Must be last
   ],
   parser: '@typescript-eslint/parser',
   parserOptions: {
@@ -23,52 +23,39 @@ module.exports = {
     },
     ecmaVersion: 'latest',
     sourceType: 'module',
-    project: './tsconfig.json',
+    project: './tsconfig.json', // Required for some TS-ESLint rules
   },
-  plugins: ['react', '@typescript-eslint', 'react-hooks', 'jsx-a11y', 'import', 'prettier'],
+  plugins: [
+    'react',
+    'react-hooks',
+    '@typescript-eslint',
+    'i18next',
+    'prettier',
+    'react-refresh'
+  ],
+  rules: {
+    'prettier/prettier': [
+      'warn',
+      {
+        endOfLine: 'auto',
+      },
+    ],
+    'react/prop-types': 'off', // Using TypeScript for prop types
+    'react/react-in-jsx-scope': 'off', // Not needed with new JSX transform
+    '@typescript-eslint/explicit-module-boundary-types': 'off', // Can be enabled for stricter typing
+    '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
+    'i18next/no-literal-string': 'off', // Might be too strict for initial setup, configure as needed
+    'react-refresh/only-export-components': [
+      'warn',
+      { allowConstantExport: true },
+    ],
+  },
   settings: {
     react: {
       version: 'detect',
     },
-    'import/resolver': {
-      typescript: {
-        project: './tsconfig.json',
-      },
-      node: true,
-    },
   },
-  rules: {
-    'prettier/prettier': ['error', {}, { usePrettierrc: true }],
-    'react/react-in-jsx-scope': 'off', // Not needed with React 17+ new JSX transform
-    'react/prop-types': 'off', // Using TypeScript for prop types
-    '@typescript-eslint/explicit-function-return-type': 'off',
-    '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-    'import/order': [
-      'error',
-      {
-        groups: ['builtin', 'external', 'internal', ['parent', 'sibling', 'index']],
-        pathGroups: [
-          {
-            pattern: 'react',
-            group: 'external',
-            position: 'before',
-          },
-          {
-            pattern: '@/**',
-            group: 'internal',
-          },
-        ],
-        pathGroupsExcludedImportTypes: ['react'],
-        'newlines-between': 'always',
-        alphabetize: {
-          order: 'asc',
-          caseInsensitive: true,
-        },
-      },
-    ],
-    'no-console': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
-    'no-debugger': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
-    // Add any project-specific rules here
-  },
-  ignorePatterns: ['node_modules/', 'dist/', '.eslintrc.cjs', 'vite.config.ts', 'postcss.config.js'],
+  ignorePatterns: ['dist', 'node_modules', '*.cjs', '*.js'], // Ignore .cjs files at the root like this one
 };

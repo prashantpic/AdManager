@@ -5,7 +5,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
-    "strict": true
+    "strict": true,
+    "noEmit": true, // Or "outDir": "dist-node" if you need to compile these files
+    "types": ["node"]
   },
   "include": ["vite.config.ts", "postcss.config.js", ".eslintrc.cjs", ".prettierrc.cjs"]
 }
