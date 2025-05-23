@@ -1,0 +1,190 @@
+# Environment specific variables
+# environment = "dev"
+# aws_region  = "us-east-1"
+# account_id  = "123456789012"
+
+# Common tags
+# tags = {
+#   Project     = "AdManager"
+#   Environment = "dev"
+#   Terraform   = "true"
+#   Repository  = "ApiGateway.Configuration"
+# }
+
+# API Naming
+# api_name_prefix = "AdManager"
+
+# Feature Flags
+# enable_graphql_api            = false
+# enable_advanced_usage_plans   = false
+# enable_custom_domain          = false
+# enable_api_logging            = true
+
+# REST API Configuration
+# rest_api_config = {
+#   openapi_spec_file_path  = "modules/api_gateway_rest/openapi/api-v1.yaml"
+#   lambda_integration_arns_map = {
+#     "GetUserLambda" = "arn:aws:lambda:us-east-1:123456789012:function:admanager-dev-getUser"
+#     "CreateUserLambda" = "arn:aws:lambda:us-east-1:123456789012:function:admanager-dev-createUser"
+#   }
+#   http_integration_uris_map   = {
+#     "NestJsUserService" = "http://internal-alb-for-nestjs-user-service/users"
+#   }
+#   request_templates_map       = {
+#     "POST /users/application/json" = "modules/api_gateway_rest/templates/request_transform_example.vtl"
+#   }
+#   response_templates_map      = {
+#     "GET /users/200/application/json" = "modules/api_gateway_rest/templates/response_transform_example.vtl"
+#   }
+# }
+
+# Authorizers Configuration
+# authorizers_config = {
+#   jwt_authorizers_config = {
+#     "CognitoJWTAuthorizer" = {
+#       name            = "CognitoJWTAuthorizer" # Must match name in OpenAPI securitySchemes
+#       type            = "COGNITO_USER_POOLS"
+#       identity_source = "method.request.header.Authorization"
+#       provider_arns   = ["arn:aws:cognito-idp:us-east-1:123456789012:userpool/us-east-1_xxxxxxxxx"]
+#       jwt_configuration = {
+#         audience = ["xxxxxxxxxxxxAudienceIdxxxxxxxxxxx"]
+#         issuer   = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_xxxxxxxxx"
+#       }
+#       authorizer_result_ttl_in_seconds = 300
+#     }
+#   }
+#   lambda_authorizers_config = {
+#     "CustomLambdaAuthorizer" = {
+#       name            = "CustomLambdaAuthorizer" # Must match name in OpenAPI securitySchemes
+#       type            = "TOKEN"
+#       authorizer_uri  = "arn:aws:lambda:us-east-1:123456789012:function:admanager-dev-customAuthorizer"
+#       identity_source = "method.request.header.Authorization"
+#       authorizer_credentials = "arn:aws:iam::123456789012:role/ApiGatewayInvokeLambdaRole" # Optional: if Lambda needs cross-account or specific role
+#       authorizer_result_ttl_in_seconds = 60
+#     }
+#   }
+# }
+
+# Stages Configuration
+# stages_config = {
+#   "dev" = {
+#     deployment_description = "Development stage for AdManager API"
+#     stage_variables_map    = {
+#       "backendServiceUrl" = "http://dev.backend.internal"
+#       "logLevel"          = "DEBUG"
+#     }
+#     access_log_format = jsonencode({ # Example JSON format
+#         requestId    = "$context.requestId",
+#         ip           = "$context.identity.sourceIp",
+#         caller       = "$context.identity.caller",
+#         user         = "$context.identity.user",
+#         requestTime  = "$context.requestTime",
+#         httpMethod   = "$context.httpMethod",
+#         resourcePath = "$context.resourcePath",
+#         status       = "$context.status",
+#         protocol     = "$context.protocol",
+#         responseLength = "$context.responseLength"
+#     })
+#     cache_cluster_enabled = false
+#     # cache_cluster_size    = "0.5" # Only if cache_cluster_enabled = true
+#     method_settings_config = [
+#       {
+#         resource_path          = "/*/*" # Apply to all methods on all resources
+#         caching_enabled        = false
+#         # cache_ttl_in_seconds   = 300
+#         throttling_burst_limit = 500
+#         throttling_rate_limit  = 200
+#         logging_level          = "INFO" # For execution logs
+#         data_trace_enabled     = true   # For execution logs (logs request/response bodies)
+#         metrics_enabled        = true
+#       },
+#       {
+#         resource_path          = "/users/GET" # Specific override for GET /users
+#         caching_enabled        = true
+#         cache_ttl_in_seconds   = 600
+#         throttling_rate_limit  = 100 # Lower rate limit for this specific path
+#       }
+#     ]
+#     stage_throttling_burst_limit = 1000
+#     stage_throttling_rate_limit  = 500
+#   },
+#   "staging" = {
+#     # ... similar configuration for staging
+#   },
+#   "prod" = {
+#     # ... similar configuration for production with production-ready settings
+#     # e.g., cache_cluster_enabled = true, cache_cluster_size = "1.6", logging_level = "ERROR", data_trace_enabled = false
+#   }
+# }
+
+# GraphQL API Configuration (only if enable_graphql_api = true)
+# graphql_api_config = {
+#   backend_graphql_uri = "arn:aws:lambda:us-east-1:123456789012:function:admanager-dev-graphqlHandler" # or HTTP endpoint
+#   default_stage_name  = "dev" # or e.g. "$default" for APIGWv2 HTTP API
+#   # authorizer_name     = "CognitoJWTAuthorizer" # Optional: name of an authorizer from authorizers_config
+#   stage_variables_map = {
+#     "graphqlEndpointInfo" = "Development GraphQL Endpoint"
+#   }
+# }
+
+# Usage Plans Configuration (only if enable_advanced_usage_plans = true)
+# usage_plans_module_config = {
+#   usage_plans_config = {
+#     "BasicTier" = {
+#       name        = "BasicTierPlan"
+#       description = "Basic tier with limited requests"
+#       throttle_settings = {
+#         rate_limit  = 10  # requests per second
+#         burst_limit = 20
+#       }
+#       quota_settings = {
+#         limit  = 1000
+#         period = "MONTH"
+#       }
+#     },
+#     "PremiumTier" = {
+#       name        = "PremiumTierPlan"
+#       description = "Premium tier with higher limits"
+#       throttle_settings = {
+#         rate_limit  = 100
+#         burst_limit = 200
+#       }
+#       quota_settings = {
+#         limit  = 100000
+#         period = "MONTH"
+#       }
+#     }
+#   }
+#   api_keys_config = {
+#     "FrontendAppKey" = {
+#       name                = "FrontendApplicationKey"
+#       description         = "API Key for the primary frontend application"
+#       enabled             = true
+#       # value               = "yourPredefinedApiKeyIfAny" # Optional: If not set, API Gateway generates one
+#       usage_plan_key_name = "BasicTier" # Must match a key in usage_plans_config
+#     },
+#     "ThirdPartyIntegrationKey" = {
+#       name                = "ExternalPartnerKey"
+#       description         = "API Key for a specific third-party partner"
+#       usage_plan_key_name = "PremiumTier"
+#     }
+#   }
+# }
+
+# Custom Domain Configuration (only if enable_custom_domain = true)
+# custom_domain_module_config = {
+#   enabled            = true
+#   domain_name        = "api.example.com"
+#   certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+#   target_stage_name  = "prod" # Stage from stages_config to map this domain to
+#   base_path          = "v1"   # e.g., "v1" or "(none)" for root
+#   endpoint_type      = "REGIONAL" # or "EDGE"
+#   security_policy    = "TLS_1_2"
+# }
+
+# Logging Module Configuration (only if enable_api_logging = true)
+# logging_module_config = {
+#   log_group_name_prefix   = "AdManager-API-Gateway"
+#   log_retention_in_days = 60
+#   cloudwatch_role_name_prefix = "AdManagerApiGatewayCloudWatchRole"
+# }
