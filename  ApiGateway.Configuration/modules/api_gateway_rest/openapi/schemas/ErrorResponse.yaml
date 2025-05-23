@@ -1,0 +1,51 @@
+type: object
+title: ErrorResponse
+description: Standardized error response structure.
+properties:
+  timestamp:
+    type: string
+    format: date-time
+    description: The time the error occurred.
+    example: "2023-01-15T10:35:00Z"
+  status:
+    type: integer
+    format: int32
+    description: The HTTP status code.
+    example: 400
+  error:
+    type: string
+    description: A short, human-readable summary of the problem type (typically the HTTP status text).
+    example: "Bad Request"
+  message:
+    type: string
+    description: A human-readable explanation specific to this occurrence of the problem or an error code.
+    example: "Validation failed for the request."
+  path:
+    type: string
+    description: The request path that resulted in the error.
+    example: "/v1/users"
+  requestId:
+    type: string
+    format: uuid
+    description: The unique identifier for the request, useful for tracing (e.g., AWS Request ID).
+    example: "c3a4b2d1-e6f5-4321-abcd-1234567890ef"
+  validationErrors:
+    type: array
+    description: An array of objects providing details about validation specific errors, if applicable.
+    items:
+      type: object
+      properties:
+        field:
+          type: string
+          description: The field that failed validation.
+          example: "email"
+        message:
+          type: string
+          description: A message describing why the field failed validation.
+          example: "Email address must be a valid format."
+required:
+  - timestamp
+  - status
+  - error
+  - message
+  - path

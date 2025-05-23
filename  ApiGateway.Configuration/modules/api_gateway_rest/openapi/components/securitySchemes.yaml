@@ -1,0 +1,11 @@
+jwtAuth:
+  type: http
+  scheme: bearer
+  bearerFormat: JWT
+  description: "JWT Authorization header using the Bearer scheme. Example: 'Authorization: Bearer {token}'"
+
+apiKeyAuth:
+  type: apiKey
+  in: header
+  name: X-API-Key
+  description: "API Key for authenticating third-party integrations or specific service-to-service communications. This key is typically associated with a usage plan."

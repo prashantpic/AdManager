@@ -1,0 +1,53 @@
+type: object
+title: User
+description: Represents a user in the system.
+properties:
+  id:
+    type: string
+    format: uuid
+    description: Unique identifier for the user.
+    readOnly: true
+    example: "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+  username:
+    type: string
+    description: The user's chosen username. Must be unique.
+    example: "john.doe"
+  email:
+    type: string
+    format: email
+    description: The user's email address. Must be unique.
+    example: "john.doe@example.com"
+  firstName:
+    type: string
+    description: The user's first name.
+    example: "John"
+  lastName:
+    type: string
+    description: The user's last name.
+    example: "Doe"
+  isActive:
+    type: boolean
+    description: Indicates if the user account is active.
+    default: true
+    example: true
+  roles:
+    type: array
+    items:
+      type: string
+    description: List of roles assigned to the user.
+    example: ["merchant_admin", "campaign_manager"]
+  createdAt:
+    type: string
+    format: date-time
+    description: Timestamp of when the user was created.
+    readOnly: true
+    example: "2023-01-15T10:30:00Z"
+  updatedAt:
+    type: string
+    format: date-time
+    description: Timestamp of when the user was last updated.
+    readOnly: true
+    example: "2023-01-16T11:00:00Z"
+required:
+  - username
+  - email

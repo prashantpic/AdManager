@@ -1,0 +1,248 @@
+/users:
+  get:
+    summary: List all users
+    operationId: listUsers
+    tags:
+      - Users
+    security:
+      - jwtAuth: []
+    responses:
+      '200':
+        description: A list of users
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '../schemas/User.yaml'
+      '401':
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '403':
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '500':
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+    x-amazon-apigateway-integration:
+      type: "aws_proxy"
+      httpMethod: "POST" # Lambda invocation
+      uri: "${ListUsersLambdaIntegrationUri}" # Placeholder for Lambda ARN, e.g., arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:listUsersFunction/invocations
+      passthroughBehavior: "when_no_match"
+      credentials: "${ApiGatewayExecutionRoleArn}" # Placeholder for IAM Role ARN
+      timeoutInMillis: 29000
+  post:
+    summary: Create a new user
+    operationId: createUser
+    tags:
+      - Users
+    security:
+      - jwtAuth: []
+    requestBody:
+      description: User object to be created
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../schemas/User.yaml'
+    responses:
+      '201':
+        description: User created successfully
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/User.yaml'
+      '400':
+        description: Invalid request payload
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '401':
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '403':
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '500':
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+    x-amazon-apigateway-integration:
+      type: "aws_proxy"
+      httpMethod: "POST"
+      uri: "${CreateUserLambdaIntegrationUri}"
+      passthroughBehavior: "when_no_match"
+      credentials: "${ApiGatewayExecutionRoleArn}"
+      timeoutInMillis: 29000
+
+/users/{userId}:
+  parameters:
+    - name: userId
+      in: path
+      required: true
+      description: ID of the user
+      schema:
+        type: string
+        format: uuid
+  get:
+    summary: Get a user by ID
+    operationId: getUserById
+    tags:
+      - Users
+    security:
+      - jwtAuth: []
+    responses:
+      '200':
+        description: Successful operation
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/User.yaml'
+      '401':
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '403':
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '404':
+        description: User not found
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '500':
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+    x-amazon-apigateway-integration:
+      type: "aws_proxy"
+      httpMethod: "POST"
+      uri: "${GetUserLambdaIntegrationUri}"
+      passthroughBehavior: "when_no_match"
+      credentials: "${ApiGatewayExecutionRoleArn}"
+      timeoutInMillis: 29000
+  put:
+    summary: Update an existing user
+    operationId: updateUser
+    tags:
+      - Users
+    security:
+      - jwtAuth: []
+    requestBody:
+      description: User object to be updated
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../schemas/User.yaml'
+    responses:
+      '200':
+        description: User updated successfully
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/User.yaml'
+      '400':
+        description: Invalid request payload or user ID
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '401':
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '403':
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '404':
+        description: User not found
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '500':
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+    x-amazon-apigateway-integration:
+      type: "aws_proxy"
+      httpMethod: "POST"
+      uri: "${UpdateUserLambdaIntegrationUri}"
+      passthroughBehavior: "when_no_match"
+      credentials: "${ApiGatewayExecutionRoleArn}"
+      timeoutInMillis: 29000
+  delete:
+    summary: Delete a user
+    operationId: deleteUser
+    tags:
+      - Users
+    security:
+      - jwtAuth: []
+    responses:
+      '204':
+        description: User deleted successfully
+      '401':
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '403':
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '404':
+        description: User not found
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+      '500':
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/ErrorResponse.yaml'
+    x-amazon-apigateway-integration:
+      type: "aws_proxy"
+      httpMethod: "POST"
+      uri: "${DeleteUserLambdaIntegrationUri}"
+      passthroughBehavior: "when_no_match"
+      credentials: "${ApiGatewayExecutionRoleArn}"
+      timeoutInMillis: 29000
