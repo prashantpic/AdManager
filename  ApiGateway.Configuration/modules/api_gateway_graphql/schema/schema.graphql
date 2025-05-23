@@ -1,0 +1,87 @@
+"""
+Defines a user in the system.
+"""
+type User {
+  id: ID!
+  username: String!
+  email: String
+  firstName: String
+  lastName: String
+  createdAt: String # AWSDateTime
+  updatedAt: String # AWSDateTime
+}
+
+"""
+Input for creating a new user.
+"""
+input CreateUserInput {
+  username: String!
+  email: String!
+  firstName: String
+  lastName: String
+}
+
+"""
+Input for updating an existing user.
+"""
+input UpdateUserInput {
+  id: ID!
+  username: String
+  email: String
+  firstName: String
+  lastName: String
+}
+
+type Query {
+  """
+  Retrieves a user by their ID.
+  """
+  getUser(id: ID!): User
+
+  """
+  Retrieves a list of all users.
+  """
+  listUsers(limit: Int, nextToken: String): UserConnection
+}
+
+type Mutation {
+  """
+  Creates a new user.
+  """
+  createUser(input: CreateUserInput!): User
+
+  """
+  Updates an existing user.
+  """
+  updateUser(input: UpdateUserInput!): User
+
+  """
+  Deletes a user by their ID.
+  """
+  deleteUser(id: ID!): User
+}
+
+"""
+Represents a paginated list of users.
+"""
+type UserConnection {
+  items: [User]
+  nextToken: String
+}
+
+"""
+Example of a subscription.
+(Note: API Gateway v2 HTTP API proxying to a GraphQL backend
+would handle subscriptions at the backend level;
+AppSync has native support for GraphQL subscriptions via MQTT over WebSockets)
+"""
+# type Subscription {
+#   onUserCreated: User
+#     @aws_subscribe(mutations: ["createUser"])
+# }
+
+schema {
+  query: Query
+  mutation: Mutation
+  # subscription: Subscription
+}

@@ -1,0 +1,135 @@
+openapi: 3.1.0
+info:
+  title: AdManager API
+  version: v1
+  description: API for AdManager services, providing access to manage campaigns, users, and other resources.
+  contact:
+    name: API Support
+    url: http://www.example.com/support
+    email: support@example.com
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: "{scheme}://{host}/{basePath}"
+    description: Dynamic server URL based on deployment stage
+    variables:
+      scheme:
+        default: https
+        description: API Scheme
+      host:
+        default: api.example.com
+        description: API Host
+      basePath:
+        default: v1
+        description: API Base Path
+  - url: "https://{environment}.api.admanager.com/v1"
+    description: Environment-specific server URL
+    variables:
+      environment:
+        default: dev
+        enum:
+          - dev
+          - staging
+          - prod
+        description: Deployment environment
+
+tags:
+  - name: Users
+    description: Operations about users
+  - name: Health
+    description: API Health Check
+
+paths:
+  /users:
+    $ref: './paths/users.yaml#/users'
+  /users/{userId}:
+    $ref: './paths/users.yaml#/users/{userId}'
+  /health:
+    get:
+      tags:
+        - Health
+      summary: API Health Check
+      description: Returns the health status of the API.
+      operationId: getHealth
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "OK"
+                  timestamp:
+                    type: string
+                    format: date-time
+      # Example of an unsecured endpoint
+      security: []
+      x-amazon-apigateway-integration:
+        type: "MOCK"
+        requestTemplates:
+          "application/json": |
+            {
+              "statusCode": 200
+            }
+        responses:
+          default:
+            statusCode: "200"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            responseTemplates:
+              "application/json": |
+                {
+                  "status": "OK",
+                  "timestamp": "$context.requestTime"
+                }
+        passthroughBehavior: "when_no_match"
+
+components:
+  schemas:
+    User:
+      $ref: './schemas/User.yaml'
+    ErrorResponse:
+      $ref: './schemas/ErrorResponse.yaml'
+    ListOfUsers:
+      type: array
+      items:
+        $ref: './schemas/User.yaml'
+
+  securitySchemes:
+    $ref: './components/securitySchemes.yaml'
+
+  parameters:
+    userIdParam:
+      name: userId
+      in: path
+      required: true
+      description: ID of the user
+      schema:
+        type: string
+        format: uuid
+
+security:
+  - jwtAuth: []
+  # - apiKeyAuth: [] # Uncomment if API Key is a global requirement
+
+x-amazon-apigateway-cors:
+  allowOrigins:
+    - "'*'" # Be more specific in production
+  allowMethods:
+    - "'GET'"
+    - "'POST'"
+    - "'PUT'"
+    - "'DELETE'"
+    - "'OPTIONS'"
+  allowHeaders:
+    - "'Content-Type'"
+    - "'X-Amz-Date'"
+    - "'Authorization'"
+    - "'X-Api-Key'"
+    - "'X-Amz-Security-Token'"
+  maxAge: 300 # In seconds
+  allowCredentials: false

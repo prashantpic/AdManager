@@ -1,0 +1,31 @@
+## Example Response Transformation VTL
+## This template can modify the backend response before it's sent to the client.
+
+## This example assumes the backend returns a JSON response.
+## The $input.path('$') variable refers to the entire response body from the backend.
+
+#if($context.response.statusCode == 200)
+    ## For successful responses, wrap the original response in a "data" field
+    ## and add some metadata.
+    {
+        "data": $input.json('$'),
+        "apiVersion": "v1",
+        "transformedAt": "$context.requestTime",
+        "message": "Response successfully transformed"
+    }
+#elseif($context.response.statusCode >= 400)
+    ## For error responses, ensure a standard error format.
+    ## This example assumes the backend might return various error structures.
+    #set($errorPayload = $util.parseJson($input.body))
+    {
+        "error": {
+            "code": #if($errorPayload.errorCode) "$errorPayload.errorCode" #else "UNKNOWN_ERROR" #end,
+            "message": #if($errorPayload.errorMessage) "$util.escapeJavaScript($errorPayload.errorMessage)" #else "$util.escapeJavaScript($input.body)" #end,
+            "requestId": "$context.requestId"
+        },
+        "transformed": true
+    }
+#else
+    ## For other status codes, pass through the original response
+    $input.json('$')
+#end

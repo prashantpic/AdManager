@@ -1,0 +1,25 @@
+## Example Request Transformation VTL
+## This template can modify the incoming request before it's sent to the backend.
+
+## Set a default Content-Type if not provided
+#if(!$input.params().header.get('Content-Type'))
+  #set($context.requestOverride.header.Content-Type = 'application/json')
+#end
+
+## Extract a value from the path and add it to the JSON body
+#set($pathParamValue = $input.params('somePathParam'))
+
+## Parse the JSON payload
+#set($jsonPayload = $util.parseJson($input.body))
+
+## Add or modify properties in the JSON payload
+#set($jsonPayload.transformedProperty = "This was added by VTL")
+#set($jsonPayload.pathValueInBody = $pathParamValue)
+
+## If a specific query parameter exists, add it to the body
+#if($input.params('myQueryParam'))
+  #set($jsonPayload.queryParamReceived = $input.params('myQueryParam'))
+#end
+
+## Re-serialize the modified JSON payload
+$util.toJson($jsonPayload)
