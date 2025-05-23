@@ -3,175 +3,168 @@ import {
   AppConfigDataClient,
   StartConfigurationSessionCommand,
   GetLatestConfigurationCommand,
-  StartConfigurationSessionCommandOutput,
+  StartConfigurationSessionCommandInput,
+  GetLatestConfigurationCommandInput,
 } from '@aws-sdk/client-appconfigdata';
-import { APPCONFIG_DATA_CLIENT } from './feature-flags.module';
 import { CoreConfigService } from '../config/config.service';
-import { CacheService } from '../cache/cache.service'; // Assuming ICacheService is implemented by CacheService
-import { IFeatureFlagsService } from './feature-flags.interface'; // Assuming this interface exists
+import { IFeatureFlagsService } from './feature-flags.interface';
+import { APPCONFIG_DATA_CLIENT } from './feature-flags.module';
+import { ICacheService } from '../cache/cache.interface'; // Optional
 
-interface AppConfigFlag {
-  enabled: boolean;
-  value?: any; // For flags that are more than just boolean
-}
-
-interface AppConfigFlagsStructure {
-  [key: string]: AppConfigFlag | boolean; // boolean for simple flags
+interface AppConfigFlagStructure {
+  [key: string]: {
+    enabled: boolean;
+    // other properties like value, variants etc.
+  };
 }
 
 @Injectable()
 export class FeatureFlagsService implements IFeatureFlagsService {
   private readonly logger = new Logger(FeatureFlagsService.name);
   private sessionToken: string | undefined;
-  private pollIntervalSeconds: number;
-  private configuration: AppConfigFlagsStructure | null = null;
-  private lastPollTime: Date | null = null;
-  private appConfigApplicationId: string;
-  private appConfigEnvironmentId: string;
-  private appConfigProfileId: string;
-  private readonly cacheKeyPrefix = 'feature-flags:';
+  private pollInterval: NodeJS.Timeout | undefined;
+  private configuration: AppConfigFlagStructure = {}; // In-memory cache of the flags
+  private readonly appConfigPollIntervalSeconds = 30; // Example, make configurable
 
   constructor(
     @Inject(APPCONFIG_DATA_CLIENT)
     private readonly appConfigClient: AppConfigDataClient,
     private readonly configService: CoreConfigService,
-    private readonly cacheService: CacheService,
+    @Inject(ICacheService) private readonly cacheService?: ICacheService, // Optional cache
   ) {
-    this.appConfigApplicationId =
-      this.configService.get('APPCONFIG_APPLICATION_ID') || '';
-    this.appConfigEnvironmentId =
-      this.configService.get('APPCONFIG_ENVIRONMENT_ID') || '';
-    this.appConfigProfileId =
-      this.configService.get('APPCONFIG_PROFILE_ID') || '';
-    this.pollIntervalSeconds =
-      this.configService.get('APPCONFIG_POLL_INTERVAL_SECONDS') || 45;
-
-    if (
-      !this.appConfigApplicationId ||
-      !this.appConfigEnvironmentId ||
-      !this.appConfigProfileId
-    ) {
-      this.logger.warn(
-        'AWS AppConfig IDs are not configured. Feature flags will not work.',
-      );
-    } else {
-      this.startSessionAndPoll();
-    }
+    this.initializeSessionAndPolling();
   }
 
-  private async startSessionAndPoll(): Promise<void> {
+  private async initializeSessionAndPolling(): Promise<void> {
     try {
       await this.startSession();
       await this.loadConfiguration(); // Initial load
 
-      setInterval(async () => {
+      // Clear existing interval if any
+      if (this.pollInterval) {
+        clearInterval(this.pollInterval);
+      }
+      
+      // Setup polling
+      const pollIntervalMs = (this.configService.get('APPCONFIG_POLL_INTERVAL_SECONDS') || this.appConfigPollIntervalSeconds) * 1000;
+      this.pollInterval = setInterval(async () => {
         await this.loadConfiguration();
-      }, this.pollIntervalSeconds * 1000);
+      }, pollIntervalMs);
+
     } catch (error) {
-      this.logger.error('Failed to initialize AppConfig session or polling', error);
+      this.logger.error('Failed to initialize AppConfig session or polling', error.stack);
     }
   }
 
   private async startSession(): Promise<void> {
-    const command = new StartConfigurationSessionCommand({
-      ApplicationIdentifier: this.appConfigApplicationId,
-      ConfigurationProfileIdentifier: this.appConfigProfileId,
-      EnvironmentIdentifier: this.appConfigEnvironmentId,
-      RequiredMinimumPollIntervalInSeconds: this.pollIntervalSeconds - 5 > 0 ? this.pollIntervalSeconds -5 : 15, // Ensure it's at least 15
-    });
+    const params: StartConfigurationSessionCommandInput = {
+      ApplicationIdentifier: this.configService.get('APPCONFIG_APPLICATION_ID'),
+      ConfigurationProfileIdentifier: this.configService.get('APPCONFIG_PROFILE_ID'),
+      EnvironmentIdentifier: this.configService.get('APPCONFIG_ENVIRONMENT_ID'),
+      RequiredMinimumPollIntervalInSeconds: this.configService.get('APPCONFIG_MIN_POLL_INTERVAL_SECONDS') || 15,
+    };
+
     try {
-      const response: StartConfigurationSessionCommandOutput =
-        await this.appConfigClient.send(command);
+      const command = new StartConfigurationSessionCommand(params);
+      const response = await this.appConfigClient.send(command);
       this.sessionToken = response.InitialConfigurationToken;
-      this.logger.log('AWS AppConfig session started successfully.');
+      this.logger.log('AppConfig session started successfully.');
     } catch (error) {
-      this.logger.error('Error starting AWS AppConfig session:', error);
-      throw error;
+      this.logger.error('Error starting AppConfig session:', error.stack);
+      throw error; // Re-throw to indicate initialization failure
     }
   }
 
   private async loadConfiguration(): Promise<void> {
     if (!this.sessionToken) {
-      this.logger.warn(
-        'No AppConfig session token. Cannot load configuration.',
-      );
-      await this.startSession(); // Attempt to restart session
-      if (!this.sessionToken) return;
+      this.logger.warn('No AppConfig session token available. Skipping configuration load.');
+      // Attempt to re-initialize session if token is missing
+      try {
+        await this.startSession();
+        if(!this.sessionToken) return; // if still no token after retry
+      } catch (error) {
+        this.logger.error('Failed to re-initialize AppConfig session during loadConfiguration.', error.stack);
+        return;
+      }
     }
 
+    const params: GetLatestConfigurationCommandInput = {
+      ConfigurationToken: this.sessionToken,
+    };
+
     try {
-      const command = new GetLatestConfigurationCommand({
-        ConfigurationToken: this.sessionToken,
-      });
+      const command = new GetLatestConfigurationCommand(params);
       const response = await this.appConfigClient.send(command);
-      this.sessionToken = response.NextPollConfigurationToken; // Update for next poll
-      this.lastPollTime = new Date();
+      
+      this.sessionToken = response.NextPollConfigurationToken; // Update token for next poll
 
       if (response.Configuration) {
         const configString = new TextDecoder().decode(response.Configuration);
-        this.configuration = JSON.parse(
-          configString,
-        ) as AppConfigFlagsStructure;
-        this.logger.log('AWS AppConfig configuration loaded/updated successfully.');
-        // Update cache
-        await this.cacheService.set(
-          `${this.cacheKeyPrefix}all_flags`,
-          this.configuration,
-          this.pollIntervalSeconds * 2, // Cache for slightly longer than poll
-        );
-      } else {
-        this.logger.log('No new AppConfig configuration received.');
-      }
-    } catch (error) {
-      this.logger.error('Error loading AWS AppConfig configuration:', error);
-      // Fallback to cached configuration if available
-      if (!this.configuration) {
-        const cachedConfig = await this.cacheService.get<AppConfigFlagsStructure>(
-          `${this.cacheKeyPrefix}all_flags`,
-        );
-        if (cachedConfig) {
-          this.configuration = cachedConfig;
-          this.logger.warn('Using cached feature flag configuration due to load error.');
+        const parsedConfig = JSON.parse(configString);
+        
+        // Assuming the configuration is a flat object of flags
+        // e.g., { "myFeature": { "enabled": true }, "anotherFeature": { "enabled": false } }
+        if (this.isValidFlagStructure(parsedConfig)) {
+            this.configuration = parsedConfig;
+            this.logger.log('AppConfig configuration loaded/updated successfully.');
+
+            // Optionally, update a shared cache if using one
+            if (this.cacheService) {
+              await this.cacheService.set('appconfig_flags', this.configuration, this.appConfigPollIntervalSeconds * 2);
+            }
+        } else {
+            this.logger.warn('Loaded AppConfig data does not match expected flag structure.');
         }
+
+      } else {
+        this.logger.log('No new AppConfig configuration data received.');
+      }
+    } catch (error)
+    {
+      // Handle common errors like ThrottlingException, BadRequestException (e.g. token expired)
+      if (error.name === 'BadRequestException' && this.sessionToken) {
+        this.logger.warn('AppConfig session token likely expired. Attempting to restart session.');
+        await this.startSession(); // Re-initialize session on token expiry
+      } else {
+        this.logger.error('Error loading AppConfig configuration:', error.stack);
       }
     }
   }
 
-  private getFlagData(featureKey: string): AppConfigFlag | boolean | undefined {
-    if (!this.configuration) {
-        this.logger.warn(`Feature flag configuration not yet loaded. Cannot check key: ${featureKey}`);
-        return undefined; // Or throw, or return default
-    }
-    return this.configuration[featureKey];
+  private isValidFlagStructure(config: any): config is AppConfigFlagStructure {
+    if (typeof config !== 'object' || config === null) return false;
+    // Basic check: iterate over keys and see if they have an 'enabled' boolean property
+    // For a more robust check, use a schema validator (e.g., Joi, Zod)
+    return Object.values(config).every(
+        (flag: any) => typeof flag === 'object' && typeof flag.enabled === 'boolean'
+    );
   }
+
 
   async isEnabled(featureKey: string, _context?: any): Promise<boolean> {
-    // Context for targeting rules would require more complex AppConfig setup (e.g., extensions)
-    // For now, we assume flags are global or use simple boolean structure.
-    const flagData = this.getFlagData(featureKey);
-
-    if (typeof flagData === 'boolean') {
-      return flagData;
-    }
-    if (typeof flagData === 'object' && flagData !== null && 'enabled' in flagData) {
-      return flagData.enabled;
-    }
-    // Default to false if flag is not found or malformed
-    this.logger.debug(`Feature flag '${featureKey}' not found or malformed, defaulting to false.`);
-    return false;
+    // Context could be used if AppConfig profile supports context-based evaluation,
+    // but this basic client fetches the whole config.
+    // For more advanced targeting, AWS AppConfig Extensions or a different SDK interaction might be needed.
+    const flag = this.configuration[featureKey];
+    return flag ? flag.enabled : false; // Default to false if flag not found
   }
 
   async getValue<T>(featureKey: string, defaultValue?: T, _context?: any): Promise<T> {
-    const flagData = this.getFlagData(featureKey);
-
-    if (typeof flagData === 'object' && flagData !== null && 'value' in flagData) {
-      return flagData.value !== undefined ? flagData.value : (defaultValue as T);
+    const flagConfig = this.configuration[featureKey];
+    if (flagConfig && typeof flagConfig === 'object' && 'value' in flagConfig) {
+      return (flagConfig as any).value as T;
     }
-    if (typeof flagData === 'boolean' || typeof flagData === 'string' || typeof flagData === 'number') {
-         // For simple flags where the flag itself is the value.
-        return flagData as unknown as T;
+    // Check for boolean enabled status as a simple value if 'value' property doesn't exist
+    if (flagConfig && typeof flagConfig.enabled === 'boolean' && defaultValue === undefined) {
+        return flagConfig.enabled as unknown as T;
     }
-    this.logger.debug(`Value for feature flag '${featureKey}' not found, returning default value.`);
     return defaultValue as T;
+  }
+
+  // Call this on module destroy to clean up interval
+  onModuleDestroy() {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+    }
   }
 }

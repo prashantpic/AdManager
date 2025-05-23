@@ -2,51 +2,47 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import {
   SQSClient,
   SendMessageCommand,
+  SendMessageCommandInput,
   SendMessageCommandOutput,
   MessageAttributeValue,
 } from '@aws-sdk/client-sqs';
-import { SQS_CLIENT } from './sqs.module';
-import { ISqsProducerService } from './sqs.interface'; // Assuming this interface exists
-import { CoreConfigService } from '../../config/config.service';
+import { ISqsProducerService } from './sqs.interface';
+import { SQS_CLIENT_TOKEN } from './sqs.module';
 
 @Injectable()
 export class SqsProducerService implements ISqsProducerService {
   private readonly logger = new Logger(SqsProducerService.name);
 
   constructor(
-    @Inject(SQS_CLIENT) private readonly sqsClient: SQSClient,
-    private readonly configService: CoreConfigService,
+    @Inject(SQS_CLIENT_TOKEN) private readonly sqsClient: SQSClient,
   ) {}
 
   async sendMessage<T>(
-    queueNameOrUrl: string,
+    queueUrl: string,
     payload: T,
     messageAttributes?: Record<string, MessageAttributeValue>,
     delaySeconds?: number,
     messageGroupId?: string, // For FIFO queues
     messageDeduplicationId?: string, // For FIFO queues
   ): Promise<SendMessageCommandOutput> {
-    let queueUrl = queueNameOrUrl;
-    // If it's a name, resolve to URL from config. This assumes queue URLs are in config.
-    if (!queueNameOrUrl.startsWith('http')) {
-        queueUrl = this.configService.getSqsQueueUrl(queueNameOrUrl);
-        if (!queueUrl) {
-            const errorMsg = `SQS Queue URL for name '${queueNameOrUrl}' not found in configuration.`;
-            this.logger.error(errorMsg);
-            throw new Error(errorMsg);
-        }
-    }
+    const messageBody = JSON.stringify(payload);
 
-    const command = new SendMessageCommand({
+    const params: SendMessageCommandInput = {
       QueueUrl: queueUrl,
-      MessageBody: JSON.stringify(payload),
+      MessageBody: messageBody,
       MessageAttributes: messageAttributes,
       DelaySeconds: delaySeconds,
-      MessageGroupId: messageGroupId, // Will be ignored by SQS for standard queues
-      MessageDeduplicationId: messageDeduplicationId, // Will be ignored by SQS for standard queues
-    });
+    };
+
+    if (messageGroupId) {
+        params.MessageGroupId = messageGroupId;
+    }
+    if (messageDeduplicationId) {
+        params.MessageDeduplicationId = messageDeduplicationId;
+    }
 
     try {
+      const command = new SendMessageCommand(params);
       const result = await this.sqsClient.send(command);
       this.logger.log(
         `Message sent to SQS queue ${queueUrl} with ID: ${result.MessageId}`,
@@ -54,8 +50,8 @@ export class SqsProducerService implements ISqsProducerService {
       return result;
     } catch (error) {
       this.logger.error(
-        `Error sending message to SQS queue ${queueUrl}:`,
-        error,
+        `Error sending message to SQS queue ${queueUrl}`,
+        error.stack,
       );
       throw error;
     }

@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
+import { ICacheService } from './cache.interface';
 import { REDIS_CLIENT } from './cache.module';
-import { ICacheService } from './cache.interface'; // Assuming this interface exists
 import { CoreConfigService } from '../config/config.service';
 
 @Injectable()
@@ -13,7 +13,8 @@ export class CacheService implements ICacheService {
     @Inject(REDIS_CLIENT) private readonly redisClient: Redis,
     private readonly configService: CoreConfigService,
   ) {
-    this.defaultTTL = this.configService.get('DEFAULT_CACHE_TTL_SECONDS') || 3600;
+    this.defaultTTL =
+      this.configService.get('DEFAULT_CACHE_TTL_SECONDS') || 300;
   }
 
   async get<T>(key: string): Promise<T | undefined> {
@@ -22,33 +23,37 @@ export class CacheService implements ICacheService {
       if (value === null || value === undefined) {
         return undefined;
       }
-      // Attempt to parse if it looks like JSON, otherwise return as string
       try {
         return JSON.parse(value) as T;
       } catch (e) {
-        return value as unknown as T; // For simple string values
+        // If it's not a JSON string, return as is (e.g. for counters)
+        return value as unknown as T;
       }
     } catch (error) {
-      this.logger.error(`Error getting key ${key} from cache:`, error);
-      // Depending on strategy, you might want to return undefined or re-throw
+      this.logger.error(`Error getting key ${key} from cache`, error.stack);
+      // Depending on strategy, you might want to return undefined or rethrow
       return undefined;
     }
   }
 
-  async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
-    const ttl = ttlSeconds !== undefined ? ttlSeconds : this.defaultTTL;
+  async set<T>(
+    key: string,
+    value: T,
+    ttlSeconds?: number,
+  ): Promise<void> {
+    const actualTtl = ttlSeconds !== undefined ? ttlSeconds : this.defaultTTL;
     try {
-      const valueToStore =
+      const stringValue =
         typeof value === 'string' ? value : JSON.stringify(value);
-      if (ttl > 0) {
-        await this.redisClient.set(key, valueToStore, 'EX', ttl);
+      if (actualTtl > 0) {
+        await this.redisClient.set(key, stringValue, 'EX', actualTtl);
       } else {
-        // Set without TTL if ttl is 0 or negative (or handle as error)
-        await this.redisClient.set(key, valueToStore);
+        // If TTL is 0 or negative, set without expiry (or handle as error if desired)
+        await this.redisClient.set(key, stringValue);
       }
     } catch (error) {
-      this.logger.error(`Error setting key ${key} in cache:`, error);
-      // Depending on strategy, you might want to re-throw
+      this.logger.error(`Error setting key ${key} in cache`, error.stack);
+      // Depending on strategy, you might want to rethrow
     }
   }
 
@@ -56,7 +61,7 @@ export class CacheService implements ICacheService {
     try {
       await this.redisClient.del(key);
     } catch (error) {
-      this.logger.error(`Error deleting key ${key} from cache:`, error);
+      this.logger.error(`Error deleting key ${key} from cache`, error.stack);
     }
   }
 
@@ -64,8 +69,8 @@ export class CacheService implements ICacheService {
     try {
       return await this.redisClient.incrby(key, amount);
     } catch (error) {
-      this.logger.error(`Error incrementing key ${key} in cache:`, error);
-      throw error; // Increment operations might need stricter error handling
+      this.logger.error(`Error incrementing key ${key} in cache`, error.stack);
+      throw error; // Rethrow as increment result is usually expected
     }
   }
 
@@ -74,12 +79,8 @@ export class CacheService implements ICacheService {
       const result = await this.redisClient.exists(key);
       return result === 1;
     } catch (error) {
-      this.logger.error(`Error checking existence of key ${key} in cache:`, error);
-      return false; // Or re-throw depending on desired behavior
+      this.logger.error(`Error checking existence of key ${key} in cache`, error.stack);
+      return false; // Or rethrow
     }
-  }
-
-  getClient(): Redis {
-    return this.redisClient;
   }
 }

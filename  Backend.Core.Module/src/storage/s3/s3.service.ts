@@ -2,30 +2,35 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import {
   S3Client,
   PutObjectCommand,
-  PutObjectCommandOutput,
   GetObjectCommand,
-  GetObjectCommandOutput,
   DeleteObjectCommand,
+  PutObjectCommandInput,
+  PutObjectCommandOutput,
+  GetObjectCommandInput,
+  GetObjectCommandOutput,
+  DeleteObjectCommandInput,
   DeleteObjectCommandOutput,
   ServerSideEncryption,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { S3_CLIENT } from './s3.module';
-import { IS3Service, UploadOptions } from './s3.interface'; // Assuming this interface and type exist
+import { IS3Service, UploadOptions } from './s3.interface';
+import { S3_CLIENT_TOKEN } from './s3.module';
 import { CoreConfigService } from '../../config/config.service';
 import { Readable } from 'stream';
 
 @Injectable()
 export class S3Service implements IS3Service {
   private readonly logger = new Logger(S3Service.name);
-  private readonly defaultSseAlgorithm: ServerSideEncryption;
+  private readonly defaultSseAlgorithm: ServerSideEncryption | undefined;
 
   constructor(
-    @Inject(S3_CLIENT) private readonly s3Client: S3Client,
+    @Inject(S3_CLIENT_TOKEN) private readonly s3Client: S3Client,
     private readonly configService: CoreConfigService,
   ) {
-    this.defaultSseAlgorithm = (this.configService.getS3DefaultSseAlgorithm() ||
-      'AES256') as ServerSideEncryption;
+    const sseAlgo = this.configService.getS3DefaultSseAlgorithm();
+    if (sseAlgo && Object.values(ServerSideEncryption).includes(sseAlgo as ServerSideEncryption)) {
+        this.defaultSseAlgorithm = sseAlgo as ServerSideEncryption;
+    }
   }
 
   async uploadFile(
@@ -34,25 +39,30 @@ export class S3Service implements IS3Service {
     body: Buffer | Uint8Array | Blob | string | Readable,
     options?: UploadOptions,
   ): Promise<PutObjectCommandOutput> {
-    const command = new PutObjectCommand({
+    const params: PutObjectCommandInput = {
       Bucket: bucketName,
       Key: key,
       Body: body,
       ContentType: options?.contentType,
-      ACL: options?.acl || 'private', // Default to private unless specified
-      ServerSideEncryption:
-        options?.serverSideEncryption || this.defaultSseAlgorithm,
+      ACL: options?.acl,
       Metadata: options?.metadata,
-    });
+      ServerSideEncryption: this.defaultSseAlgorithm || options?.serverSideEncryption,
+    };
+
+    if (params.ServerSideEncryption === ServerSideEncryption.AWS_KMS && options?.kmsKeyId) {
+        params.SSEKMSKeyId = options.kmsKeyId;
+    }
+
 
     try {
+      const command = new PutObjectCommand(params);
       const result = await this.s3Client.send(command);
       this.logger.log(`File uploaded to S3: s3://${bucketName}/${key}`);
       return result;
     } catch (error) {
       this.logger.error(
-        `Error uploading file to S3 (s3://${bucketName}/${key}):`,
-        error,
+        `Error uploading file to S3: s3://${bucketName}/${key}`,
+        error.stack,
       );
       throw error;
     }
@@ -67,24 +77,25 @@ export class S3Service implements IS3Service {
     contentLength: number | undefined;
     metadata?: Record<string, string>;
   }> {
-    const command = new GetObjectCommand({
+    const params: GetObjectCommandInput = {
       Bucket: bucketName,
       Key: key,
-    });
+    };
 
     try {
+      const command = new GetObjectCommand(params);
       const result: GetObjectCommandOutput = await this.s3Client.send(command);
       this.logger.log(`File downloaded from S3: s3://${bucketName}/${key}`);
       return {
-        body: result.Body as Readable | Blob | undefined, // Type assertion based on expected runtime
+        body: result.Body as Readable | Blob | undefined, // Type assertion based on environment (Node.js vs Browser)
         contentType: result.ContentType,
         contentLength: result.ContentLength,
         metadata: result.Metadata,
       };
     } catch (error) {
       this.logger.error(
-        `Error downloading file from S3 (s3://${bucketName}/${key}):`,
-        error,
+        `Error downloading file from S3: s3://${bucketName}/${key}`,
+        error.stack,
       );
       throw error;
     }
@@ -94,19 +105,20 @@ export class S3Service implements IS3Service {
     bucketName: string,
     key: string,
   ): Promise<DeleteObjectCommandOutput> {
-    const command = new DeleteObjectCommand({
+    const params: DeleteObjectCommandInput = {
       Bucket: bucketName,
       Key: key,
-    });
+    };
 
     try {
+      const command = new DeleteObjectCommand(params);
       const result = await this.s3Client.send(command);
       this.logger.log(`File deleted from S3: s3://${bucketName}/${key}`);
       return result;
     } catch (error) {
       this.logger.error(
-        `Error deleting file from S3 (s3://${bucketName}/${key}):`,
-        error,
+        `Error deleting file from S3: s3://${bucketName}/${key}`,
+        error.stack,
       );
       throw error;
     }
@@ -115,21 +127,19 @@ export class S3Service implements IS3Service {
   async getPresignedUrl(
     bucketName: string,
     key: string,
-    expiresInSeconds: number = 3600, // Default to 1 hour
     operation: 'getObject' | 'putObject' = 'getObject',
+    expiresInSeconds: number = 3600, // Default to 1 hour
   ): Promise<string> {
+    
     let command;
     if (operation === 'putObject') {
-      command = new PutObjectCommand({
-        Bucket: bucketName,
-        Key: key,
-        ServerSideEncryption: this.defaultSseAlgorithm,
-      });
+        const putParams: PutObjectCommandInput = { Bucket: bucketName, Key: key };
+        if (this.defaultSseAlgorithm) {
+            putParams.ServerSideEncryption = this.defaultSseAlgorithm;
+        }
+        command = new PutObjectCommand(putParams);
     } else {
-      command = new GetObjectCommand({
-        Bucket: bucketName,
-        Key: key,
-      });
+        command = new GetObjectCommand({ Bucket: bucketName, Key: key });
     }
 
     try {
@@ -137,13 +147,13 @@ export class S3Service implements IS3Service {
         expiresIn: expiresInSeconds,
       });
       this.logger.log(
-        `Generated pre-signed URL for ${operation} on s3://${bucketName}/${key}`,
+        `Generated pre-signed URL for S3: s3://${bucketName}/${key}, operation: ${operation}`,
       );
       return url;
     } catch (error) {
       this.logger.error(
-        `Error generating pre-signed URL for S3 (s3://${bucketName}/${key}):`,
-        error,
+        `Error generating pre-signed URL for S3: s3://${bucketName}/${key}`,
+        error.stack,
       );
       throw error;
     }

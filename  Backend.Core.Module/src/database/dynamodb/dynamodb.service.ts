@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import {
   DynamoDBDocumentClient,
   GetCommand,
@@ -15,10 +15,8 @@ import {
   DeleteCommandOutput,
   QueryCommand,
   QueryCommandInput,
-  QueryCommandOutput,
   ScanCommand,
   ScanCommandInput,
-  ScanCommandOutput,
 } from '@aws-sdk/lib-dynamodb';
 import { DYNAMODB_DOCUMENT_CLIENT } from './dynamodb.module';
 
@@ -31,27 +29,43 @@ export class DynamoDBService {
     private readonly docClient: DynamoDBDocumentClient,
   ) {}
 
-  async getItem<T = Record<string, any>>(
-    params: GetCommandInput,
+  async getItem<T>(
+    tableName: string,
+    key: Record<string, any>,
   ): Promise<T | undefined> {
+    const params: GetCommandInput = {
+      TableName: tableName,
+      Key: key,
+    };
     try {
-      const command = new GetCommand(params);
-      const result: GetCommandOutput = await this.docClient.send(command);
+      const result: GetCommandOutput = await this.docClient.send(
+        new GetCommand(params),
+      );
       return result.Item as T | undefined;
     } catch (error) {
-      this.logger.error(`Error getting item from ${params.TableName}:`, error);
+      this.logger.error(
+        `Error getting item from ${tableName} with key ${JSON.stringify(key)}`,
+        error.stack,
+      );
       throw error;
     }
   }
 
-  async putItem<T = Record<string, any>>(
-    params: PutCommandInput,
+  async putItem<T>(
+    tableName: string,
+    item: T,
   ): Promise<PutCommandOutput> {
+    const params: PutCommandInput = {
+      TableName: tableName,
+      Item: item as Record<string, any>,
+    };
     try {
-      const command = new PutCommand(params);
-      return await this.docClient.send(command);
+      return await this.docClient.send(new PutCommand(params));
     } catch (error) {
-      this.logger.error(`Error putting item to ${params.TableName}:`, error);
+      this.logger.error(
+        `Error putting item to ${tableName}: ${JSON.stringify(item)}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -60,46 +74,56 @@ export class DynamoDBService {
     params: UpdateCommandInput,
   ): Promise<UpdateCommandOutput> {
     try {
-      const command = new UpdateCommand(params);
-      return await this.docClient.send(command);
+      return await this.docClient.send(new UpdateCommand(params));
     } catch (error) {
-      this.logger.error(`Error updating item in ${params.TableName}:`, error);
+      this.logger.error(
+        `Error updating item in ${params.TableName} with key ${JSON.stringify(
+          params.Key,
+        )}`,
+        error.stack,
+      );
       throw error;
     }
   }
 
   async deleteItem(
-    params: DeleteCommandInput,
+    tableName: string,
+    key: Record<string, any>,
   ): Promise<DeleteCommandOutput> {
+    const params: DeleteCommandInput = {
+      TableName: tableName,
+      Key: key,
+    };
     try {
-      const command = new DeleteCommand(params);
-      return await this.docClient.send(command);
+      return await this.docClient.send(new DeleteCommand(params));
     } catch (error) {
-      this.logger.error(`Error deleting item from ${params.TableName}:`, error);
+      this.logger.error(
+        `Error deleting item from ${tableName} with key ${JSON.stringify(key)}`,
+        error.stack,
+      );
       throw error;
     }
   }
 
-  async query<T = Record<string, any>>(
-    params: QueryCommandInput,
-  ): Promise<T[]> {
+  async query<T>(params: QueryCommandInput): Promise<T[]> {
     try {
-      const command = new QueryCommand(params);
-      const result: QueryCommandOutput = await this.docClient.send(command);
+      const result = await this.docClient.send(new QueryCommand(params));
       return (result.Items || []) as T[];
     } catch (error) {
-      this.logger.error(`Error querying table ${params.TableName}:`, error);
+      this.logger.error(
+        `Error querying table ${params.TableName}`,
+        error.stack,
+      );
       throw error;
     }
   }
 
-  async scan<T = Record<string, any>>(params: ScanCommandInput): Promise<T[]> {
+  async scan<T>(params: ScanCommandInput): Promise<T[]> {
     try {
-      const command = new ScanCommand(params);
-      const result: ScanCommandOutput = await this.docClient.send(command);
+      const result = await this.docClient.send(new ScanCommand(params));
       return (result.Items || []) as T[];
     } catch (error) {
-      this.logger.error(`Error scanning table ${params.TableName}:`, error);
+      this.logger.error(`Error scanning table ${params.TableName}`, error.stack);
       throw error;
     }
   }

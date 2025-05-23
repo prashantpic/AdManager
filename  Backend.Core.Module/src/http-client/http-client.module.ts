@@ -1,25 +1,24 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
-import * as https from 'https';
-import { HttpClientService } from './http-client.service';
-import { IHttpClientService } from './http-client.interface'; // Assuming this interface exists
 import { CoreConfigModule } from '../config/config.module';
 import { CoreConfigService } from '../config/config.service';
+import { HttpClientService } from './http-client.service';
+import { IHttpClientService } from './http-client.interface';
+import * as https from 'https';
 
 @Module({
   imports: [
     CoreConfigModule,
     HttpModule.registerAsync({
       imports: [CoreConfigModule],
-      useFactory: async (configService: CoreConfigService) => ({
+      useFactory: (configService: CoreConfigService) => ({
         timeout: configService.getHttpClientDefaultTimeoutMs(),
         maxRedirects: 5,
-        httpsAgent: new https.Agent({
-          // Enforce TLS 1.2+ by default. Node.js 12.11.0+ defaults to TLS 1.2/1.3 min.
-          // Explicitly set minVersion if supporting older Node or for absolute certainty.
-          // secureProtocol: 'TLSv1_2_method', // More direct but can be restrictive
-          minVersion: 'TLSv1.2',
-          rejectUnauthorized: configService.getNodeEnv() === 'production', // Enforce cert validation in prod
+        httpsAgent: new https.Agent({ 
+          // Ensures TLS 1.2+ by default in modern Node.js versions.
+          // For older Node versions, specific cipher suites or minVersion might be needed.
+          // SecureOptions: constants.SSL_OP_NO_TLSv1 | constants.SSL_OP_NO_TLSv1_1, // Example for explicit control
+          secureProtocol: 'TLSv1_2_method', // More explicit for older Node.js
         }),
       }),
       inject: [CoreConfigService],
@@ -27,10 +26,10 @@ import { CoreConfigService } from '../config/config.service';
   ],
   providers: [
     {
-      provide: IHttpClientService, // Use an injection token for the interface
+      provide: IHttpClientService,
       useClass: HttpClientService,
     },
   ],
-  exports: [IHttpClientService], // Export the interface token
+  exports: [IHttpClientService],
 })
 export class CoreHttpClientModule {}

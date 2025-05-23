@@ -3,7 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { firstValueFrom, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
-import { IHttpClientService } from './http-client.interface'; // Assuming this interface exists
+import { IHttpClientService } from './http-client.interface';
 import { CoreConfigService } from '../config/config.service';
 
 @Injectable()
@@ -18,85 +18,159 @@ export class HttpClientService implements IHttpClientService {
     this.defaultTimeout = this.configService.getHttpClientDefaultTimeoutMs();
   }
 
-  private async request<T>(
-    config: AxiosRequestConfig,
-  ): Promise<AxiosResponse<T>> {
-    const finalConfig: AxiosRequestConfig = {
-      timeout: this.defaultTimeout,
-      ...config, // User-provided config overrides defaults
-    };
-
-    this.logger.debug(
-      `Making HTTP ${finalConfig.method?.toUpperCase()} request to ${finalConfig.url}`,
-    );
-
-    return firstValueFrom(
-      this.httpService.request<T>(finalConfig).pipe(
-        catchError((error: AxiosError) => {
-          const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
-          const message =
-            error.response?.data || error.message || 'HTTP Request Failed';
-          this.logger.error(
-            `HTTP request to ${finalConfig.url} failed with status ${status}:`,
-            message,
-          );
-          return throwError(
-            () => new HttpException(message, status, { cause: error }),
-          );
-        }),
-      ),
-    );
+  private mapAxiosErrorToHttpException(error: AxiosError): HttpException {
+    this.logger.error(`HTTP Request Error: ${error.message}`, error.stack, error.config?.url);
+    if (error.response) {
+      return new HttpException(
+        {
+          message: error.response.data || error.message,
+          statusCode: error.response.status,
+          url: error.config?.url,
+        },
+        error.response.status,
+      );
+    } else if (error.request) {
+      // The request was made but no response was received
+      return new HttpException(
+        {
+          message: 'No response received from server',
+          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+          url: error.config?.url,
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      return new HttpException(
+        {
+          message: error.message || 'HTTP request setup error',
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          url: error.config?.url,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async get<T>(
     url: string,
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
-    return this.request<T>({ ...config, method: 'GET', url });
+    const requestConfig = { 
+        timeout: this.defaultTimeout,
+        ...config 
+    };
+    return firstValueFrom(
+      this.httpService.get<T>(url, requestConfig).pipe(
+        catchError((error: AxiosError) =>
+          throwError(() => this.mapAxiosErrorToHttpException(error)),
+        ),
+      ),
+    );
   }
 
-  async post<T>(
+  async post<T, D = any>(
     url: string,
-    data?: any,
+    data?: D,
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
-    return this.request<T>({ ...config, method: 'POST', url, data });
+    const requestConfig = { 
+        timeout: this.defaultTimeout,
+        ...config 
+    };
+    return firstValueFrom(
+      this.httpService.post<T>(url, data, requestConfig).pipe(
+        catchError((error: AxiosError) =>
+          throwError(() => this.mapAxiosErrorToHttpException(error)),
+        ),
+      ),
+    );
   }
 
-  async put<T>(
+  async put<T, D = any>(
     url: string,
-    data?: any,
+    data?: D,
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
-    return this.request<T>({ ...config, method: 'PUT', url, data });
+    const requestConfig = { 
+        timeout: this.defaultTimeout,
+        ...config 
+    };
+    return firstValueFrom(
+      this.httpService.put<T>(url, data, requestConfig).pipe(
+        catchError((error: AxiosError) =>
+          throwError(() => this.mapAxiosErrorToHttpException(error)),
+        ),
+      ),
+    );
   }
 
   async delete<T>(
     url: string,
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
-    return this.request<T>({ ...config, method: 'DELETE', url });
+    const requestConfig = { 
+        timeout: this.defaultTimeout,
+        ...config 
+    };
+    return firstValueFrom(
+      this.httpService.delete<T>(url, requestConfig).pipe(
+        catchError((error: AxiosError) =>
+          throwError(() => this.mapAxiosErrorToHttpException(error)),
+        ),
+      ),
+    );
   }
 
-  async patch<T>(
+  async patch<T, D = any>(
     url: string,
-    data?: any,
+    data?: D,
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
-    return this.request<T>({ ...config, method: 'PATCH', url, data });
+    const requestConfig = { 
+        timeout: this.defaultTimeout,
+        ...config 
+    };
+    return firstValueFrom(
+      this.httpService.patch<T>(url, data, requestConfig).pipe(
+        catchError((error: AxiosError) =>
+          throwError(() => this.mapAxiosErrorToHttpException(error)),
+        ),
+      ),
+    );
   }
 
   async head<T>(
     url: string,
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
-    return this.request<T>({ ...config, method: 'HEAD', url });
+    const requestConfig = { 
+        timeout: this.defaultTimeout,
+        ...config 
+    };
+    return firstValueFrom(
+      this.httpService.head<T>(url, requestConfig).pipe(
+        catchError((error: AxiosError) =>
+          throwError(() => this.mapAxiosErrorToHttpException(error)),
+        ),
+      ),
+    );
   }
 
   async options<T>(
     url: string,
     config?: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
-    return this.request<T>({ ...config, method: 'OPTIONS', url });
+    const requestConfig = { 
+        timeout: this.defaultTimeout,
+        ...config 
+    };
+    return firstValueFrom(
+      this.httpService.options<T>(url, requestConfig).pipe(
+        catchError((error: AxiosError) =>
+          throwError(() => this.mapAxiosErrorToHttpException(error)),
+        ),
+      ),
+    );
   }
 }

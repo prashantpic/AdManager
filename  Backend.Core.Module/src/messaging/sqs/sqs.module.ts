@@ -1,29 +1,30 @@
-import { Module } from '@nestjs/common';
+import { Module, Provider } from '@nestjs/common';
 import { SQSClient } from '@aws-sdk/client-sqs';
-import { SqsProducerService } from './sqs.producer.service';
-import { ISqsProducerService } from './sqs.interface'; // Assuming this interface exists
 import { CoreConfigModule } from '../../config/config.module';
 import { CoreConfigService } from '../../config/config.service';
-import { sqsConfigFactory } from './sqs.config'; // Assuming this factory exists
+import { SqsProducerService } from './sqs.producer.service';
+import { ISqsProducerService } from './sqs.interface';
+import { sqsConfig } from './sqs.config';
 
-export const SQS_CLIENT = 'SQS_CLIENT';
+export const SQS_CLIENT_TOKEN = 'SQS_CLIENT_TOKEN';
+
+const sqsClientProvider: Provider = {
+  provide: SQS_CLIENT_TOKEN,
+  useFactory: (configService: CoreConfigService) => {
+    return new SQSClient(sqsConfig(configService));
+  },
+  inject: [CoreConfigService],
+};
 
 @Module({
   imports: [CoreConfigModule],
   providers: [
+    sqsClientProvider,
     {
-      provide: SQS_CLIENT,
-      useFactory: (configService: CoreConfigService): SQSClient => {
-        const clientOptions = sqsConfigFactory(configService);
-        return new SQSClient(clientOptions);
-      },
-      inject: [CoreConfigService],
-    },
-    {
-      provide: ISqsProducerService, // Use an injection token for the interface
+      provide: ISqsProducerService,
       useClass: SqsProducerService,
     },
   ],
-  exports: [ISqsProducerService], // Export the interface token
+  exports: [ISqsProducerService],
 })
 export class SqsModule {}

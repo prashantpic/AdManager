@@ -5,23 +5,14 @@ import * as AWSXRay from 'aws-xray-sdk-core';
 export class TracingService {
   private readonly logger = new Logger(TracingService.name);
 
-  private getValidSegment(): AWSXRay.Segment | AWSXRay.Subsegment | undefined {
-    try {
-      return AWSXRay.getSegment();
-    } catch (e) {
-      this.logger.warn('No active X-Ray segment found to add metadata/annotation.');
-      return undefined;
-    }
-  }
-
   addAnnotation(key: string, value: string | number | boolean): void {
-    const segment = this.getValidSegment();
+    const segment = AWSXRay.getSegment();
     if (segment) {
-      try {
-        segment.addAnnotation(key, value);
-      } catch (error) {
-        this.logger.error(`Failed to add annotation: ${key}`, error);
-      }
+      segment.addAnnotation(key, value);
+    } else {
+      this.logger.warn(
+        `No active X-Ray segment found. Cannot add annotation: ${key}`,
+      );
     }
   }
 
@@ -30,63 +21,62 @@ export class TracingService {
     value: any,
     namespace: string = 'default',
   ): void {
-    const segment = this.getValidSegment();
+    const segment = AWSXRay.getSegment();
     if (segment) {
-      try {
-        segment.addMetadata(key, value, namespace);
-      } catch (error) {
-        this.logger.error(
-          `Failed to add metadata: ${key} in namespace ${namespace}`,
-          error,
-        );
-      }
+      segment.addMetadata(key, value, namespace);
+    } else {
+      this.logger.warn(
+        `No active X-Ray segment found. Cannot add metadata: ${key} in namespace ${namespace}`,
+      );
     }
   }
 
   async captureAsync<T>(
     name: string,
     asyncFunction: (subsegment?: AWSXRay.Subsegment) => Promise<T>,
+    parentSegment?: AWSXRay.Segment | AWSXRay.Subsegment,
   ): Promise<T> {
-    const currentSegment = this.getValidSegment();
+    const currentSegment = parentSegment || AWSXRay.getSegment();
     if (!currentSegment) {
-      this.logger.warn(`No active segment to capture async function: ${name}`);
-      return asyncFunction(); // Execute without subsegment
+      this.logger.warn(
+        `No active X-Ray segment or parent provided for ${name}. Running function without new subsegment.`,
+      );
+      // Execute the function directly without creating a subsegment if no parent segment is available.
+      // This might happen if X-Ray is disabled or not properly initialized.
+      return asyncFunction();
     }
     return AWSXRay.captureAsyncFunc(name, asyncFunction, currentSegment);
   }
 
-  captureSync<T>(
+  capture<T>(
     name: string,
     syncFunction: (subsegment?: AWSXRay.Subsegment) => T,
+    parentSegment?: AWSXRay.Segment | AWSXRay.Subsegment,
   ): T {
-    const currentSegment = this.getValidSegment();
-    if (!currentSegment) {
-      this.logger.warn(`No active segment to capture sync function: ${name}`);
-      return syncFunction(); // Execute without subsegment
+    const currentSegment = parentSegment || AWSXRay.getSegment();
+     if (!currentSegment) {
+      this.logger.warn(
+        `No active X-Ray segment or parent provided for ${name}. Running function without new subsegment.`,
+      );
+      return syncFunction();
     }
-    return AWSXRay.captureFunc(name, syncFunction, currentSegment);
-  }
-
-  beginSubsegment(name: string): AWSXRay.Subsegment | undefined {
-    const segment = this.getValidSegment();
-    if (segment) {
-      return segment.addNewSubsegment(name);
-    }
-    this.logger.warn(`No active segment to begin subsegment: ${name}`);
-    return undefined;
-  }
-
-  endSubsegment(subsegment?: AWSXRay.Subsegment, error?: Error | string): void {
-    if (subsegment) {
-      if (error) {
-        subsegment.addError(error);
-      }
+    const subsegment = currentSegment.addNewSubsegment(name);
+    try {
+      const result = syncFunction(subsegment);
       subsegment.close();
+      return result;
+    } catch (error) {
+      subsegment.close(error);
+      throw error;
     }
+  }
+
+  getCurrentSegment(): AWSXRay.Segment | AWSXRay.Subsegment | undefined {
+    return AWSXRay.getSegment();
   }
 
   getTraceId(): string | undefined {
-    const segment = this.getValidSegment();
+    const segment = AWSXRay.getSegment();
     return segment?.trace_id;
   }
 }

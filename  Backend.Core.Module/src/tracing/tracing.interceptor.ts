@@ -3,7 +3,7 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
-  Logger,
+  HttpException,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
@@ -12,64 +12,60 @@ import { IncomingMessage, ServerResponse } from 'http';
 
 @Injectable()
 export class TracingInterceptor implements NestInterceptor {
-  private readonly logger = new Logger(TracingInterceptor.name);
-
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const httpContext = context.switchToHttp();
     const request = httpContext.getRequest<IncomingMessage>();
-    const response = httpContext.getResponse<ServerResponse>();
+    // const response = httpContext.getResponse<ServerResponse>(); // Used if segment is closed here manually
 
-    if (!request || !request.method || !request.url) {
-      return next.handle(); // Not an HTTP request context we can trace effectively
-    }
+    // For NestJS microservices or GraphQL, context type will differ
+    // This interceptor is primarily for HTTP.
+
+    const segment = AWSXRay.getSegment(); // Get the current segment (likely created by Express middleware if used)
     
-    const segmentName = `${request.method} ${request.url}`;
-    // Create a new segment or use the existing one if propagated by upstream (e.g., API Gateway)
-    const segment = AWSXRay.getSegment();
-    let subsegment: AWSXRay.Subsegment | AWSXRay.Segment;
+    // If no segment, and X-Ray is not auto-creating for Express, create one.
+    // This depends on whether AWSXRay.express.openSegment is used in main.ts
+    // For simplicity, let's assume a segment exists or we create a subsegment.
+    // const name = `${request.method} ${request.url}`;
 
-    if (segment && segment instanceof AWSXRay.Segment) {
-         // If root segment exists, create subsegment for controller/method
-        subsegment = segment.addNewSubsegment(segmentName);
-    } else {
-        // This might occur if not running within an existing X-Ray segment (e.g. Lambda, ECS with X-Ray enabled)
-        // Or if X-Ray Express middleware isn't used and this is the first point of X-Ray instrumentation.
-        // For HTTP requests, typically an X-Ray Express middleware or Lambda instrumentation would create the root segment.
-        // Here, we'll create a new segment if none exists.
-        subsegment = new AWSXRay.Segment(segmentName, request.headers['x-amzn-trace-id'] as string);
-    }
+    return AWSXRay.captureAsyncFunc('## NestJSHandler', (subsegment) => {
+      if (!subsegment) {
+        // This case should ideally not happen if X-Ray is properly configured
+        // or if running inside a Lambda environment where a segment is provided.
+        // For local dev without daemon, subsegment might be null if context missing strategy doesn't create one.
+        return next.handle();
+      }
 
+      subsegment.addAnnotation('nestjs.handler', context.getHandler().name);
+      subsegment.addAnnotation('nestjs.class', context.getClass().name);
+      
+      if (request.method && request.url) {
+        subsegment.addIncomingRequestData(new AWSXRay.IncomingRequestData(request));
+      }
 
-    AWSXRay.setSegment(subsegment);
+      // You can add user information if available from request (e.g., after authentication)
+      // if (request.user) {
+      //   subsegment.setUser(request.user.id);
+      // }
 
-    // Add request data as annotations or metadata
-    subsegment.addAnnotation('method', request.method);
-    subsegment.addAnnotation('url', request.url);
-    if (request.headers['user-agent']) {
-      subsegment.addMetadata('user_agent', request.headers['user-agent']);
-    }
-    // Potentially add user ID if available from request context after authentication
-    // if (request.user && request.user.id) {
-    //   subsegment.setUser(request.user.id);
-    // }
-
-    return next.handle().pipe(
-      tap(() => {
-        if (response.statusCode) {
-          subsegment.addAnnotation('status_code', response.statusCode);
-          if (response.statusCode >= 400 && response.statusCode < 500) {
-            subsegment.fault = true;
-          } else if (response.statusCode >= 500) {
-            subsegment.error = true;
+      return next.handle().pipe(
+        tap((data) => {
+          // Add response metadata if needed, though X-Ray SDK often handles status_code
+          // subsegment.addMetadata('response.body', data); // Be careful with large responses
+          const res = httpContext.getResponse<ServerResponse>();
+          if (res.statusCode) {
+             subsegment.addMetadata('response.status_code', res.statusCode);
           }
-        }
-        subsegment.close();
-      }),
-      catchError((error) => {
-        subsegment.addError(error);
-        subsegment.close(error);
-        throw error;
-      }),
-    );
+          subsegment.close();
+        }),
+        catchError((err) => {
+          subsegment.addError(err);
+          if (err instanceof HttpException) {
+            subsegment.addMetadata('error.status_code', err.getStatus());
+          }
+          subsegment.close(err);
+          throw err;
+        }),
+      );
+    }, segment); // Pass parent segment if available
   }
 }

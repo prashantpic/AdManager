@@ -1,10 +1,10 @@
-import { Module, OnModuleInit, DynamicModule } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import * as AWSXRay from 'aws-xray-sdk-core';
-import { TracingInterceptor } from './tracing.interceptor';
-import { TracingService } from './tracing.service';
+import * as express from 'express';
 import { CoreConfigModule } from '../config/config.module';
 import { CoreConfigService } from '../config/config.service';
-import { IncomingMessage } from 'http';
+import { TracingInterceptor } from './tracing.interceptor';
+import { TracingService } from './tracing.service';
 
 @Module({
   imports: [CoreConfigModule],
@@ -15,46 +15,37 @@ export class TracingModule implements OnModuleInit {
   constructor(private readonly configService: CoreConfigService) {}
 
   onModuleInit() {
-    const nodeEnv = this.configService.getNodeEnv();
-    const serviceName =
-      this.configService.get('APP_NAME') || 'AdManagerPlatform';
+    // Configure AWS X-Ray
+    // AWSXRay.setLogger(console); // Use your structured logger
+    // AWSXRay.setDaemonAddress('127.0.0.1:2000'); // Or use environment variables
 
-    AWSXRay.setLogger(console); // Use your structured logger ideally
-    AWSXRay.setDaemonAddress(
-      this.configService.get('AWS_XRAY_DAEMON_ADDRESS') || '127.0.0.1:2000',
-    );
-    AWSXRay.setContextMissingStrategy('LOG_ERROR'); // Or 'IGNORE'
-
-    if (nodeEnv === 'development' || nodeEnv === 'test') {
-      AWSXRay.setStreamingThreshold(1); // Send segments immediately in dev/test
+    if (this.configService.get('NODE_ENV') === 'development') {
+        AWSXRay.setContextMissingStrategy('LOG_ERROR');
+    } else {
+        AWSXRay.setContextMissingStrategy(() => { /* silent */ });
     }
+
+    // Capture outgoing HTTP requests (if not using patched AWS SDK for everything)
+    AWSXRay.captureHTTPsGlobal(require('http'));
+    AWSXRay.captureHTTPsGlobal(require('https'));
     
-    // Configure the X-Ray SDK for Express manually if not using aws-xray-sdk-express middleware
-    // AWSXRay.middleware.setSegmentNamingStrategy((req: IncomingMessage) => {
-    //   // Custom naming strategy if needed
-    //   return serviceName;
-    // });
+    // Capture Promises
+    AWSXRay.capturePromise();
 
-    // Capture all AWS SDK V3 clients
-    AWSXRay.captureAWSv3Client(new AWSXRay.AWS({region: this.configService.getAwsRegion()}));
-
-
-    if (this.configService.getFeatureFlag('enableXRayTracingFull')) {
-        AWSXRay.captureHTTPsGlobal(require('http'));
-        AWSXRay.captureHTTPsGlobal(require('https'));
-        AWSXRay.capturePromise();
+    // Patch AWS SDK if enabled
+    const enableXRayFull = this.configService.getFeatureFlag('enableXRayTracingFull'); // Assuming IAppConfig has this
+    if (enableXRayFull) {
+      AWSXRay.captureAWS(require('aws-sdk')); // For SDK v2
+      // For AWS SDK v3, it's typically done by instrumenting individual clients or using OpenTelemetry
+      // This basic setup might need extension for comprehensive v3 client tracing if not using OpenTelemetry.
+      // However, manual subsegment creation in services (like S3Service, SQSService) will still work.
+      // AWSXRay.captureAWSv3Client(new S3Client({})); // Example, but usually done via middleware if available.
     }
-    
-    console.log('AWS X-Ray SDK Initialized.');
-  }
 
-  static forRoot(): DynamicModule {
-    // Optional: if you need to pass dynamic config to the module
-    return {
-      module: TracingModule,
-      imports: [CoreConfigModule],
-      providers: [TracingService, TracingInterceptor],
-      exports: [TracingService, TracingInterceptor],
-    };
+    // Express middleware for incoming requests (NestJS uses Express by default)
+    // This is typically done at the app level in main.ts or via an interceptor.
+    // The TracingInterceptor will handle NestJS specific request/response lifecycle.
+    // app.use(AWSXRay.express.openSegment('AdManagerBackend')); // Example for main.ts
+    // app.use(AWSXRay.express.closeSegment());
   }
 }
