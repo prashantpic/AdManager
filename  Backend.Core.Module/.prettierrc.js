@@ -1,4 +1,3 @@
-```javascript
 module.exports = {
   singleQuote: true,
   semi: true,
@@ -6,8 +5,5 @@ module.exports = {
   printWidth: 120,
   tabWidth: 2,
   useTabs: false,
-  bracketSpacing: true,
-  arrowParens: 'always',
   endOfLine: 'auto',
 };
-```

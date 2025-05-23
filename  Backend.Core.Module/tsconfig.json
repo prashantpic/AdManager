@@ -1,4 +1,3 @@
-```json
 {
   "compilerOptions": {
     "module": "commonjs",
@@ -18,15 +17,14 @@
     "strictBindCallApply": true,
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
-    "resolveJsonModule": true,
     "esModuleInterop": true,
-    "strict": true,
+    "resolveJsonModule": true,
     "lib": ["es2021"],
+    "typeRoots": ["node_modules/@types"],
     "paths": {
       "@/*": ["src/*"]
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
+  "exclude": ["node_modules", "dist"]
 }
-```
