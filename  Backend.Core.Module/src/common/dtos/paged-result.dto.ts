@@ -3,53 +3,40 @@ import { Type } from 'class-transformer';
 import { IsArray, IsInt, IsNotEmpty, Min, ValidateNested } from 'class-validator';
 
 /**
- * @class PagedResultDto
  * @description Generic DTO for paginated API responses.
  */
 export class PagedResultDto<T> {
-  @ApiProperty({
-    isArray: true,
-    description: 'The list of items for the current page.',
-  })
   @IsArray()
   @ValidateNested({ each: true })
-  // @Type(() => Object) // This needs to be set by the consuming DTO with the actual type
+  @ApiProperty({ isArray: true, description: 'Array of items for the current page.' })
+  @IsNotEmpty()
   items: T[];
 
-  @ApiProperty({
-    type: Number,
-    description: 'The total number of items available.',
-    example: 100,
-  })
   @IsInt()
   @Min(0)
-  @IsNotEmpty()
+  @ApiProperty({ example: 100, description: 'Total number of items available.' })
   totalCount: number;
 
-  @ApiProperty({
-    type: Number,
-    description: 'The current page number.',
-    example: 1,
-  })
   @IsInt()
   @Min(1)
-  @IsNotEmpty()
+  @ApiProperty({ example: 1, description: 'Current page number.' })
   page: number;
 
-  @ApiProperty({
-    type: Number,
-    description: 'The number of items per page.',
-    example: 10,
-  })
   @IsInt()
   @Min(1)
-  @IsNotEmpty()
+  @ApiProperty({ example: 10, description: 'Number of items per page.' })
   pageSize: number;
+
+  @IsInt()
+  @Min(0)
+  @ApiProperty({ example: 10, description: 'Total number of pages.' })
+  totalPages: number;
 
   constructor(items: T[], totalCount: number, page: number, pageSize: number) {
     this.items = items;
     this.totalCount = totalCount;
     this.page = page;
     this.pageSize = pageSize;
+    this.totalPages = pageSize > 0 ? Math.ceil(totalCount / pageSize) : 0;
   }
 }

@@ -1,18 +1,16 @@
 /**
- * @file Interface defining the contract for the SecretsService.
- * Specifies methods for retrieving secrets.
+ * @description Interface defining the contract for the SecretsService.
+ * It specifies methods for retrieving secrets securely from a secret management system.
  */
 export interface ISecretsService {
   /**
-   * Retrieves a secret by its name from AWS Secrets Manager.
-   *
-   * @template T The expected type of the secret value (if parsed as JSON).
-   * @param secretName The name or ARN of the secret.
-   * @param options Optional configuration for retrieval.
-   * @param options.parseJson If true, attempts to parse the secret string as JSON. Defaults to false.
-   * @param options.forceRefresh If true, bypasses any cache and fetches directly from Secrets Manager. Defaults to false.
-   * @returns A promise that resolves to the secret value (parsed as T if parseJson is true, otherwise string),
-   *          or throws an error if the secret cannot be retrieved.
+   * Retrieves a secret by its name.
+   * @param secretName The identifier of the secret to retrieve.
+   * @param options Optional parameters for retrieval.
+   * @returns A promise that resolves to the secret value.
+   *          If `parseJson` is true in options, the secret string is parsed as JSON,
+   *          and the promise resolves to the parsed object of type T.
+   *          Otherwise, or if `parseJson` is false/undefined, it resolves to the secret string.
    */
   getSecret<T = string>(
     secretName: string,
@@ -20,4 +18,4 @@ export interface ISecretsService {
   ): Promise<T>;
 }
 
-export const SECRETS_SERVICE = Symbol('ISecretsService');
+export const ISecretsService = Symbol('ISecretsService');

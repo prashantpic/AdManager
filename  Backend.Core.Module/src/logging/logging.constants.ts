@@ -1,21 +1,36 @@
 /**
- * @file Defines constants related to logging.
+ * @description Defines constants related to logging.
  */
-
 export const LoggingConstants = {
   /**
-   * Default context name for logs if no specific context is provided.
-   */
-  DEFAULT_LOG_CONTEXT: 'Application',
-
-  /**
-   * HTTP Header key for correlation ID.
-   * This should align with how correlation IDs are propagated (e.g., by API Gateway, TracingInterceptor).
+   * Default header key for correlation ID.
+   * This ID helps trace a request across multiple services or components.
    */
   CORRELATION_ID_HEADER: 'x-correlation-id',
 
   /**
-   * HTTP Header key for request ID, often used interchangeably with correlation ID.
+   * Default header key for request ID.
+   * Often used as a unique identifier for a single HTTP request.
    */
-  REQUEST_ID_HEADER: 'x-request-id', // Common alternative
+  REQUEST_ID_HEADER: 'x-request-id',
+
+  /**
+   * Default logging context name if none is provided.
+   */
+  DEFAULT_CONTEXT: 'Application',
+
+  /**
+   * Key used in log messages to store the correlation ID.
+   */
+  CORRELATION_ID_LOG_KEY: 'correlationId',
+
+   /**
+   * Key used in log messages to store the request ID.
+   */
+  REQUEST_ID_LOG_KEY: 'requestId',
+
+  /**
+   * Key used for context in structured logs.
+   */
+  CONTEXT_LOG_KEY: 'context',
 };

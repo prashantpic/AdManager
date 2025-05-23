@@ -1,209 +1,179 @@
+const SOME_BRAND = Symbol('Some');
+const NONE_BRAND = Symbol('None');
+
 /**
- * @file Implementation of the Maybe (Option) pattern for handling optional values.
- * Provides Some and None types to represent the presence or absence of a value.
+ * @description Represents an optional value that might be present (Some) or absent (None).
  */
-
-const NONE_SYMBOL = Symbol('None');
-
-/**
- * Represents the absence of a value.
- */
-export class NoneImpl {
-  private readonly _symbol: typeof NONE_SYMBOL = NONE_SYMBOL; // To make it a unique type
-
-  isSome(): this is Some<never> {
-    return false;
-  }
-
-  isNone(): this is NoneImpl {
-    return true;
-  }
-
-  /**
-   * Returns the contained Some value.
-   * Throws an error if called on a None.
-   */
-  unwrap(): never {
-    throw new Error('Called unwrap on a None value');
-  }
-
-  /**
-   * Returns the contained Some value or a provided default.
-   */
-  unwrapOr<T>(defaultValue: T): T {
-    return defaultValue;
-  }
-
-  /**
-   * Returns the contained Some value or computes it from a function.
-   */
-  unwrapOrElse<T>(fn: () => T): T {
-    return fn();
-  }
-
-  /**
-   * Maps a Some<T> to Some<U> by applying a function to a contained Some value,
-   * or returns None if the Maybe is None.
-   */
-  map<U>(_fn: (value: never) => U): Maybe<U> {
-    return this as unknown as NoneImpl;
-  }
-
-  /**
-   * Applies a function to the contained Some value, or returns a default if None.
-   */
-  mapOr<U>(defaultValue: U, _fn: (value: never) => U): U {
-    return defaultValue;
-  }
-
-  /**
-   * Applies a function to the contained Some value, or computes a default if None.
-   */
-  mapOrElse<U>(defaultFn: () => U, _fn: (value: never) => U): U {
-    return defaultFn();
-  }
-
-  /**
-   * Returns None if the option is None, otherwise calls predicate with the wrapped value
-   * and returns Some(t) if predicate returns true, and None otherwise.
-   */
-  filter(_predicate: (value: never) => boolean): Maybe<never> {
-    return this;
-  }
-
-  /**
-   * Returns the option if it contains a value, otherwise returns optb.
-   */
-  or<T>(optb: Maybe<T>): Maybe<T> {
-    return optb;
-  }
-
-  /**
-   * Returns the option if it contains a value, otherwise calls f and returns the result.
-   */
-  orElse<T>(fn: () => Maybe<T>): Maybe<T> {
-    return fn();
-  }
-
-  /**
-   * Calls the provided function with the contained value (if Some) and returns this.
-   */
-  tap(_fn: (value: never) => void): this {
-    return this;
-  }
-}
+export type Maybe<T> = Some<T> | None<T>;
 
 /**
- * Represents the presence of a value.
+ * @description Represents the presence of a value.
  */
 export class Some<T> {
-  public readonly value: T;
+  public readonly _brand = SOME_BRAND;
+  private readonly value: T;
 
   constructor(value: T) {
     if (value === null || value === undefined) {
-      throw new Error('Some value cannot be null or undefined. Use None for absence.');
+      throw new Error('Cannot create Some with null or undefined value. Use None instead.');
     }
     this.value = value;
   }
 
-  isSome(): this is Some<T> {
+  public isSome(): this is Some<T> {
     return true;
   }
 
-  isNone(): this is NoneImpl {
+  public isNone(): this is None<T> {
     return false;
   }
 
   /**
-   * Returns the contained Some value.
+   * Unwraps the value. Throws an error if called on a None.
+   * @throws Error if this is a None (should not happen with Some).
    */
-  unwrap(): T {
+  public unwrap(): T {
     return this.value;
   }
 
   /**
-   * Returns the contained Some value or a provided default.
+   * Unwraps the value or returns a default value.
    */
-  unwrapOr(_defaultValue: T): T {
+  public unwrapOr(_defaultValue: T): T {
     return this.value;
   }
 
   /**
-   * Returns the contained Some value or computes it from a function.
+   * Maps a Some<T> to Some<U> by applying a function to the contained value.
+   * If the function returns null or undefined, the result will be None<U>.
    */
-  unwrapOrElse(_fn: () => T): T {
-    return this.value;
+  public map<U>(fn: (value: T) => U | null | undefined): Maybe<U> {
+    const mappedValue = fn(this.value);
+    return mappedValue === null || mappedValue === undefined ? none() : some(mappedValue);
   }
 
   /**
-   * Maps a Some<T> to Some<U> by applying a function to a contained Some value.
-   * If the function returns null or undefined, the result is None.
+   * Applies a function that returns a Maybe to the contained value.
+   * Useful for chaining operations that might return None.
    */
-  map<U>(fn: (value: T) => U | null | undefined): Maybe<U> {
-    const newValue = fn(this.value);
-    return newValue === null || newValue === undefined ? None : new Some(newValue);
-  }
-
-  /**
-   * Applies a function to the contained Some value, or returns a default if None.
-   */
-  mapOr<U>(_defaultValue: U, fn: (value: T) => U): U {
+  public flatMap<U>(fn: (value: T) => Maybe<U>): Maybe<U> {
     return fn(this.value);
   }
 
   /**
-   * Applies a function to the contained Some value, or computes a default if None.
+   * Executes a side-effecting function if the value is Some.
    */
-  mapOrElse<U>(_defaultFn: () => U, fn: (value: T) => U): U {
-    return fn(this.value);
-  }
-
-  /**
-   * Returns None if the option is None, otherwise calls predicate with the wrapped value
-   * and returns Some(t) if predicate returns true, and None otherwise.
-   */
-  filter(predicate: (value: T) => boolean): Maybe<T> {
-    return predicate(this.value) ? this : None;
-  }
-
-  /**
-   * Returns the option if it contains a value, otherwise returns optb.
-   */
-  or(_optb: Maybe<T>): Maybe<T> {
-    return this;
-  }
-
-  /**
-   * Returns the option if it contains a value, otherwise calls f and returns the result.
-   */
-  orElse(_fn: () => Maybe<T>): Maybe<T> {
-    return this;
-  }
-
-  /**
-   * Calls the provided function with the contained value (if Some) and returns this.
-   */
-  tap(fn: (value: T) => void): this {
+  public ifSome(fn: (value: T) => void): this {
     fn(this.value);
+    return this;
+  }
+
+  /**
+   * Executes a side-effecting function if the value is None (no-op for Some).
+   */
+  public ifNone(_fn: () => void): this {
     return this;
   }
 }
 
 /**
- * The singleton instance of None.
+ * @description Represents the absence of a value.
  */
-export const None: NoneImpl = new NoneImpl();
+export class None<T> {
+  public readonly _brand = NONE_BRAND;
+
+  constructor() {
+    // No value to store
+  }
+
+  public isSome(): this is Some<T> {
+    return false;
+  }
+
+  public isNone(): this is None<T> {
+    return true;
+  }
+
+  /**
+   * Unwraps the value. Throws an error because this is a None.
+   * @throws Error
+   */
+  public unwrap(): T {
+    throw new Error('Called unwrap on a None value');
+  }
+
+  /**
+   * Unwraps the value or returns a default value.
+   */
+  public unwrapOr(defaultValue: T): T {
+    return defaultValue;
+  }
+
+  /**
+   * Maps a None<T> to None<U> (no-op for None).
+   */
+  public map<U>(_fn: (value: T) => U | null | undefined): Maybe<U> {
+    return this as unknown as None<U>;
+  }
+
+  /**
+   * Applies a function that returns a Maybe to the contained value (no-op for None).
+   */
+  public flatMap<U>(_fn: (value: T) => Maybe<U>): Maybe<U> {
+    return this as unknown as None<U>;
+  }
+
+  /**
+   * Executes a side-effecting function if the value is Some (no-op for None).
+   */
+  public ifSome(_fn: (value: T) => void): this {
+    return this;
+  }
+
+  /**
+   * Executes a side-effecting function if the value is None.
+   */
+  public ifNone(fn: () => void): this {
+    fn();
+    return this;
+  }
+}
+
+// Singleton instance for None to avoid multiple allocations
+const NONE_INSTANCE = new None<any>();
 
 /**
- * The Maybe type, which can be either Some or None.
+ * Helper function to create a Some value.
+ * Throws if value is null or undefined.
  */
-export type Maybe<T> = Some<T> | NoneImpl;
+export function some<T>(value: T): Some<T> {
+  return new Some(value);
+}
 
 /**
- * Helper function to create a Maybe from a value that might be null or undefined.
- * @param value The value to wrap.
- * @returns Some<T> if the value is not null or undefined, otherwise None.
+ * Helper function to create a None value.
  */
-export function maybe<T>(value: T | null | undefined): Maybe<T> {
-  return value === null || value === undefined ? None : new Some(value);
+export function none<T = never>(): None<T> {
+  return NONE_INSTANCE as None<T>;
+}
+
+/**
+ * Creates a Maybe from a potentially null or undefined value.
+ */
+export function fromNullable<T>(value: T | null | undefined): Maybe<T> {
+  return value === null || value === undefined ? none<T>() : some(value);
+}
+
+/**
+ * Type guard to check if a Maybe is Some.
+ */
+export function isSome<T>(maybe: Maybe<T>): maybe is Some<T> {
+  return maybe.isSome();
+}
+
+/**
+ * Type guard to check if a Maybe is None.
+ */
+export function isNone<T>(maybe: Maybe<T>): maybe is None<T> {
+  return maybe.isNone();
 }

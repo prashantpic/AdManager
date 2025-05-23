@@ -1,48 +1,42 @@
 /**
- * @interface IDomainEvent
  * @description Base interface for Domain Events in Domain-Driven Design.
  * Domain events represent something significant that has happened in the domain.
  */
 export interface IDomainEvent<T = any> {
   /**
-   * The unique identifier for this specific event instance.
+   * Unique identifier for the event instance.
    */
-  readonly eventId: string;
+  readonly eventId: string; // Typically a UUID
 
   /**
-   * The timestamp when the event occurred.
+   * Name of the event.
+   * e.g., 'UserRegisteredEvent', 'OrderPlacedEvent'
+   */
+  readonly eventName: string;
+
+  /**
+   * Timestamp when the event occurred.
    */
   readonly timestamp: Date;
 
   /**
-   * The type or name of the event (e.g., 'UserCreatedEvent', 'OrderPlacedEvent').
+   * Identifier of the aggregate root that this event pertains to, if applicable.
    */
-  readonly type: string;
+  readonly aggregateId?: string; // Typically a UUID
 
   /**
-   * The version of the event schema, useful for event versioning.
+   * Version of the aggregate root after this event was applied, if applicable.
+   * Useful for optimistic concurrency control or event sourcing.
    */
-  readonly eventVersion: number;
+  readonly aggregateVersion?: number;
 
   /**
-   * The ID of the aggregate root that this event pertains to.
-   * Optional, as some events might not be directly tied to a single aggregate.
-   */
-  readonly aggregateId?: string;
-
-  /**
-   * The type of the aggregate root (e.g., 'User', 'Order').
-   * Optional.
-   */
-  readonly aggregateType?: string;
-
-  /**
-   * The payload of the event, containing the data specific to this event.
+   * The payload of the event, containing relevant data.
    */
   readonly payload: T;
 
   /**
-   * Optional metadata associated with the event, such as correlation ID, user ID, tenant ID.
+   * Metadata associated with the event, e.g., correlation ID, user ID.
    */
   readonly metadata?: Record<string, any>;
 }

@@ -1,10 +1,5 @@
 /**
- * @file Implementation of the Result pattern for functional error handling.
- * Provides Ok and Err types to represent successful or failed outcomes.
- */
-
-/**
- * Represents a successful outcome.
+ * @description Represents a successful outcome of an operation.
  */
 export class Ok<T, E = never> {
   public readonly value: T;
@@ -13,85 +8,61 @@ export class Ok<T, E = never> {
     this.value = value;
   }
 
-  isOk(): this is Ok<T, E> {
+  public isOk(): this is Ok<T, E> {
     return true;
   }
 
-  isErr(): this is Err<T, E> {
+  public isErr(): this is Err<E, T> {
     return false;
   }
 
   /**
-   * Returns the contained Ok value.
-   * Throws an error if called on an Err.
+   * Unwraps the value. Throws an error if called on an Err.
+   * @throws Error if this is an Err.
    */
-  unwrap(): T {
+  public unwrap(): T {
     return this.value;
   }
 
   /**
-   * Returns the contained Ok value or a provided default.
+   * Unwraps the value or returns a default value.
    */
-  unwrapOr(_defaultValue: T): T {
+  public unwrapOr(_defaultValue: T): T {
     return this.value;
   }
 
   /**
-   * Returns the contained Err value.
-   * Throws an error if called on an Ok.
+   * Unwraps the error. Throws an error if called on an Ok.
+   * @throws Error if this is an Ok.
    */
-  unwrapErr(): E {
+  public unwrapErr(): E {
     throw new Error('Called unwrapErr on an Ok value');
   }
 
   /**
-   * Maps an Ok<T, E> to Ok<U, E> by applying a function to a contained Ok value,
-   * leaving an Err value untouched.
+   * Maps an Ok<T, E> to Ok<U, E> by applying a function to the contained Ok value.
    */
-  map<U>(fn: (value: T) => U): Result<U, E> {
+  public map<U>(fn: (value: T) => U): Result<U, E> {
     return new Ok(fn(this.value));
   }
 
   /**
-   * Maps a Result<T, E> to Result<T, F> by applying a function to a contained Err value,
-   * leaving an Ok value untouched.
+   * Maps an Ok<T, E> to Ok<T, F> by applying a function to the contained Err value (no-op for Ok).
    */
-  mapErr<F>(_fn: (error: E) => F): Result<T, F> {
-    return this as unknown as Ok<T, F>; // Remains Ok<T>, F is only relevant for Err
+  public mapErr<F>(_fn: (error: E) => F): Result<T, F> {
+    return this as unknown as Result<T, F>; // Safe cast as E is never used here
   }
 
   /**
-   * Applies a function to the contained Ok value, or returns the default if Err.
+   * Calls the provided function `fn` if the result is Ok, otherwise returns the Err value of self.
    */
-  mapOr<U>(_defaultValue: U, fn: (value: T) => U): U {
+  public andThen<U>(fn: (value: T) => Result<U, E>): Result<U, E> {
     return fn(this.value);
-  }
-
-  /**
-   * Applies a function to the contained Ok value, or computes a default if Err.
-   */
-  mapOrElse<U>(_defaultFn: (error: E) => U, fn: (value: T) => U): U {
-    return fn(this.value);
-  }
-
-  /**
-   * Calls the provided function with the contained value (if Ok) and returns this.
-   */
-  tap(fn: (value: T) => void): this {
-    fn(this.value);
-    return this;
-  }
-
-  /**
-   * Calls the provided function with the contained error (if Err) and returns this.
-   */
-  tapErr(_fn: (error: E) => void): this {
-    return this;
   }
 }
 
 /**
- * Represents a failed outcome.
+ * @description Represents a failed outcome of an operation.
  */
 export class Err<E, T = never> {
   public readonly error: E;
@@ -100,93 +71,90 @@ export class Err<E, T = never> {
     this.error = error;
   }
 
-  isOk(): this is Ok<T, E> {
+  public isOk(): this is Ok<T, E> {
     return false;
   }
 
-  isErr(): this is Err<E, T> {
+  public isErr(): this is Err<E, T> {
     return true;
   }
 
   /**
-   * Returns the contained Ok value.
-   * Throws an error if called on an Err.
+   * Unwraps the value. Throws an error because this is an Err.
+   * @throws Error (this.error)
    */
-  unwrap(): T {
-    throw new Error(`Called unwrap on an Err value: ${JSON.stringify(this.error)}`);
+  public unwrap(): T {
+    if (this.error instanceof Error) {
+      throw this.error;
+    }
+    throw new Error(String(this.error) || 'Called unwrap on an Err value');
   }
 
   /**
-   * Returns the contained Ok value or a provided default.
+   * Unwraps the value or returns a default value.
    */
-  unwrapOr(defaultValue: T): T {
+  public unwrapOr(defaultValue: T): T {
     return defaultValue;
   }
 
   /**
-   * Returns the contained Err value.
+   * Unwraps the error.
    */
-  unwrapErr(): E {
+  public unwrapErr(): E {
     return this.error;
   }
 
   /**
-   * Maps an Ok<T, E> to Ok<U, E> by applying a function to a contained Ok value,
-   * leaving an Err value untouched.
+   * Maps an Err<E, T> to Err<E, U> by applying a function to the contained Ok value (no-op for Err).
    */
-  map<U>(_fn: (value: T) => U): Result<U, E> {
-    return this as unknown as Err<E, U>; // Remains Err<E>, U is only relevant for Ok
+  public map<U>(_fn: (value: T) => U): Result<U, E> {
+    return this as unknown as Result<U, E>; // Safe cast as T is never used here
   }
 
   /**
-   * Maps a Result<T, E> to Result<T, F> by applying a function to a contained Err value,
-   * leaving an Ok value untouched.
+   * Maps an Err<E, T> to Err<F, T> by applying a function to the contained Err value.
    */
-  mapErr<F>(fn: (error: E) => F): Result<T, F> {
+  public mapErr<F>(fn: (error: E) => F): Result<T, F> {
     return new Err(fn(this.error));
   }
 
   /**
-   * Applies a function to the contained Ok value, or returns the default if Err.
+   * Calls the provided function `fn` if the result is Ok (no-op for Err), otherwise returns the Err value of self.
    */
-  mapOr<U>(defaultValue: U, _fn: (value: T) => U): U {
-    return defaultValue;
-  }
-
-  /**
-   * Applies a function to the contained Ok value, or computes a default if Err.
-   */
-  mapOrElse<U>(defaultFn: (error: E) => U, _fn: (value: T) => U): U {
-    return defaultFn(this.error);
-  }
-
-  /**
-   * Calls the provided function with the contained value (if Ok) and returns this.
-   */
-  tap(_fn: (value: T) => void): this {
-    return this;
-  }
-
-  /**
-   * Calls the provided function with the contained error (if Err) and returns this.
-   */
-  tapErr(fn: (error: E) => void): this {
-    fn(this.error);
-    return this;
+  public andThen<U>(_fn: (value: T) => Result<U, E>): Result<U, E> {
+    return this as unknown as Result<U, E>;
   }
 }
 
 /**
- * The Result type, which can be either Ok or Err.
+ * @description Represents a value that is either a success (Ok) or a failure (Err).
  */
 export type Result<T, E> = Ok<T, E> | Err<E, T>;
 
 /**
  * Helper function to create an Ok result.
  */
-export const ok = <T, E = never>(value: T): Ok<T, E> => new Ok(value);
+export function ok<T, E = never>(value: T): Ok<T, E> {
+  return new Ok(value);
+}
 
 /**
  * Helper function to create an Err result.
  */
-export const err = <E, T = never>(error: E): Err<E, T> => new Err(error);
+export function err<E, T = never>(error: E): Err<E, T> {
+  return new Err(error);
+}
+
+/**
+ * Type guard to check if a Result is Ok.
+ */
+export function isOk<T, E>(result: Result<T, E>): result is Ok<T, E> {
+  return result.isOk();
+}
+
+/**
+ * Type guard to check if a Result is Err.
+ */
+export function isErr<T, E>(result: Result<T, E>): result is Err<E, T> {
+  return result.isErr();
+}

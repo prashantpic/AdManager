@@ -1,43 +1,36 @@
 import { HttpStatus } from '@nestjs/common';
 import { ValidationError } from 'class-validator';
-import { CommonErrorCodes } from '../constants/error-codes.constants';
 import { BaseException } from './base.exception';
+import { ErrorCodes } from '../constants/error-codes.constants';
 
 /**
- * @interface IValidationErrors
- * @description Structure for detailed validation errors.
- */
-export interface IValidationErrors {
-  property: string;
-  constraints: { [type: string]: string };
-  children?: IValidationErrors[];
-}
-
-/**
- * @class ValidationException
  * @description Custom exception for DTO validation errors.
- * @Requirement REQ-14-006, REQ-15-013
+ * REQ-14-006, REQ-15-013
  */
 export class ValidationException extends BaseException {
-  constructor(validationErrors: ValidationError[]) {
-    super({
-      message: 'Input data validation failed',
-      status: HttpStatus.BAD_REQUEST,
-      errorCode: CommonErrorCodes.VALIDATION_ERROR,
-      details: ValidationException.formatErrors(validationErrors),
-    });
+  constructor(errors: ValidationError[]) {
+    super(
+      'Input data validation failed',
+      HttpStatus.BAD_REQUEST,
+      ErrorCodes.VALIDATION_ERROR,
+      ValidationException.formatErrors(errors),
+    );
   }
 
-  /**
-   * Formats class-validator errors into a more structured format.
-   * @param errors Array of ValidationError objects.
-   * @returns Array of formatted IValidationErrors.
-   */
-  private static formatErrors(errors: ValidationError[]): IValidationErrors[] {
-    return errors.map((err) => ({
-      property: err.property,
-      constraints: err.constraints || {},
-      children: err.children && err.children.length > 0 ? ValidationException.formatErrors(err.children) : undefined,
-    }));
+  private static formatErrors(errors: ValidationError[]): Record<string, string[]> {
+    const formattedErrors: Record<string, string[]> = {};
+    errors.forEach((err) => {
+      if (err.constraints) {
+        formattedErrors[err.property] = Object.values(err.constraints);
+      }
+      // Handle nested validation errors if present
+      if (err.children && err.children.length > 0) {
+        const nestedErrors = this.formatErrors(err.children);
+        for (const key in nestedErrors) {
+          formattedErrors[`${err.property}.${key}`] = nestedErrors[key];
+        }
+      }
+    });
+    return formattedErrors;
   }
 }

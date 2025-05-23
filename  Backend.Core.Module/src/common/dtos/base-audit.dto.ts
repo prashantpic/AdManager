@@ -3,54 +3,45 @@ import { Type } from 'class-transformer';
 import { IsDate, IsOptional, IsString, IsUUID } from 'class-validator';
 
 /**
- * @class BaseAuditDto
  * @description Base DTO for common audit information.
- * @Requirement REQ-15-016
+ * REQ-15-016
  */
 export abstract class BaseAuditDto {
-  @ApiProperty({
-    type: Date,
-    description: 'The date and time when the entity was created.',
-    example: '2023-01-01T12:00:00.000Z',
-    readOnly: true,
-  })
   @IsDate()
   @Type(() => Date)
-  @IsOptional() // Usually set by the system, not by client input for create/update
+  @ApiProperty({
+    description: 'Timestamp of when the entity was created.',
+    example: '2023-01-01T12:00:00.000Z',
+    type: String,
+    format: 'date-time',
+  })
   createdAt: Date;
 
-  @ApiProperty({
-    type: Date,
-    description: 'The date and time when the entity was last updated.',
-    example: '2023-01-01T13:00:00.000Z',
-    readOnly: true,
-  })
   @IsDate()
   @Type(() => Date)
-  @IsOptional() // Usually set by the system
+  @ApiProperty({
+    description: 'Timestamp of when the entity was last updated.',
+    example: '2023-01-02T15:30:00.000Z',
+    type: String,
+    format: 'date-time',
+  })
   updatedAt: Date;
 
+  @IsOptional()
+  @IsUUID()
   @ApiProperty({
-    type: String,
-    format: 'uuid',
-    description: 'The ID of the user who created the entity.',
+    description: 'Identifier of the user who created the entity (if available).',
     example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-    readOnly: true,
     required: false,
   })
-  @IsUUID()
-  @IsOptional() // Usually set by the system
   createdBy?: string;
 
+  @IsOptional()
+  @IsUUID()
   @ApiProperty({
-    type: String,
-    format: 'uuid',
-    description: 'The ID of the user who last updated the entity.',
+    description: 'Identifier of the user who last updated the entity (if available).',
     example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-    readOnly: true,
     required: false,
   })
-  @IsUUID()
-  @IsOptional() // Usually set by the system
   updatedBy?: string;
 }
