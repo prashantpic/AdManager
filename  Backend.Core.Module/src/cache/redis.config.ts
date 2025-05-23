@@ -4,54 +4,67 @@ import { CoreConfigService } from '../config/config.service';
 import { ISecretsService } from '../config/secrets/secrets.interface';
 
 /**
- * Configuration factory for the `ioredis` (Redis) client.
- * @param configService - The core configuration service.
- * @param secretsService - The secrets management service.
- * @returns A promise resolving to `RedisOptions` for `ioredis`.
+ * @function redisConfigFactory
+ * @description Configuration factory for `ioredis` (Redis client).
+ * Retrieves Redis connection details (host, port, password) from `CoreConfigService` and `SecretsService`.
+ * Configures TLS options for connecting to Amazon ElastiCache with in-transit encryption.
+ * REQ-11-010, REQ-16-010, REQ-14-012, REQ-15-002
+ * @param coreConfigService - Service for accessing general application configuration.
+ * @param secretsService - Service for retrieving secrets like Redis passwords.
+ * @returns A promise resolving to RedisOptions for ioredis.
  */
 export const redisConfigFactory = async (
-  configService: CoreConfigService,
+  coreConfigService: CoreConfigService,
   secretsService: ISecretsService,
 ): Promise<RedisOptions> => {
-  const host = configService.getRedisHost();
-  const port = configService.getRedisPort();
+  const host = coreConfigService.getRedisHost();
+  const port = coreConfigService.getRedisPort();
+  const tlsEnabled = coreConfigService.getRedisTlsEnabled();
+  const passwordSecretName = coreConfigService.getRedisPasswordSecretName();
 
-  // REQ-14-012: Redis password should be fetched from Secrets Manager
-  const password = await secretsService.getSecret<string>(
-    'REDIS_PASSWORD_SECRET_NAME', // Replace with actual secret name/ARN
-  );
-
-  const tlsOptions = configService.isRedisTlsEnabled()
-    ? {} // For ElastiCache with in-transit encryption, ioredis usually handles TLS by default if host is *.cache.amazonaws.com
-      // Specific CA or certs might be needed for other setups: { ca: 'path/to/ca.crt' }
-    : undefined;
-
-  if (!host || !port) {
-    throw new Error('Redis host or port is not configured.');
+  let password: string | undefined;
+  if (passwordSecretName) {
+    try {
+      // Assuming the secret value is the password string directly
+      password = await secretsService.getSecret<string>(passwordSecretName, { parseJson: false });
+    } catch (error) {
+      console.error(`Failed to retrieve Redis password from Secrets Manager (secret: ${passwordSecretName}):`, error);
+      // Depending on policy, might throw or proceed without password if allowed for local/dev
+      // For now, if secret retrieval fails, connection might fail or attempt without password.
+    }
+  } else if (process.env.REDIS_PASSWORD) { // Fallback to direct env var if secret name not provided
+      password = process.env.REDIS_PASSWORD;
   }
 
-  const options: RedisOptions = {
+  const redisOptions: RedisOptions = {
     host,
     port,
     password,
-    tls: tlsOptions,
-    // REQ-11-010, REQ-16-010: Handle connection errors and readiness events
-    // ioredis handles retries by default. Configure retryStrategy if custom behavior is needed.
-    // e.g., retryStrategy: (times) => Math.min(times * 50, 2000),
-    // Event listeners for 'error', 'ready', 'connect' can be added on the client instance in CacheService or CacheModule.
-    // Lazy connect can be useful to prevent app hanging on startup if Redis is down.
-    lazyConnect: true,
-    // Show friendly error events on the console
-    showFriendlyErrorStack: configService.getNodeEnv() === 'development',
-    // Keep a connection alive, especially useful for Lambda or long-running tasks.
-    keepAlive: 30000, // Send a PING every 30 seconds
-    // Connection timeout
-    connectTimeout: 10000, // 10 seconds
+    // Recommended ioredis options
+    retryStrategy: (times: number): number | null => {
+      // Exponential backoff, max 10 retries
+      if (times > 10) {
+        return null; // Stop retrying
+      }
+      return Math.min(times * 200, 3000); // Max 3 seconds delay
+    },
+    maxRetriesPerRequest: 3, // Retry commands up to 3 times
+    enableOfflineQueue: true, // Queue commands when offline (up to a limit)
+    // lazyConnect: true, // Connect on first command, not on instantiation
+    showFriendlyErrorStack: coreConfigService.getNodeEnv() === 'development',
   };
 
-  // TODO: REQ-15-002 might apply if ElastiCache has specific TLS version requirements beyond default.
-  // ioredis uses Node.js's `tls.connect`, which should use secure defaults.
+  if (tlsEnabled) {
+    redisOptions.tls = {
+      // For ElastiCache, typically `servername` should match the primary endpoint if using a self-signed cert or specific CA
+      // servername: host, // May not be needed if using standard CAs
+      rejectUnauthorized: coreConfigService.getNodeEnv() === 'production', // Enforce valid certs in prod
+      // ca: fs.readFileSync('/path/to/ca.crt'), // If using custom CA for ElastiCache
+    };
+    // For ElastiCache with TLS, sometimes the port might change (e.g., if a proxy is used)
+    // Ensure the port from config is correct for TLS.
+  }
 
-  return options;
+  return redisOptions;
 };
 ```

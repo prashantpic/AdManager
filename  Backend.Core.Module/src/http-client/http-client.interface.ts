@@ -9,19 +9,19 @@ import { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 export interface IHttpClientService {
   /**
    * Performs a GET request.
-   * @template T The expected type of the response data.
-   * @param url The URL to request.
-   * @param config Optional Axios request configuration.
+   * @template T - The expected type of the response data.
+   * @param url - The URL to request.
+   * @param config - Optional Axios request configuration.
    * @returns A promise that resolves to an AxiosResponse.
    */
   get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>;
 
   /**
    * Performs a POST request.
-   * @template T The expected type of the response data.
-   * @param url The URL to request.
-   * @param data Optional data to send in the request body.
-   * @param config Optional Axios request configuration.
+   * @template T - The expected type of the response data.
+   * @param url - The URL to request.
+   * @param data - The data to send in the request body.
+   * @param config - Optional Axios request configuration.
    * @returns A promise that resolves to an AxiosResponse.
    */
   post<T = any>(
@@ -32,10 +32,10 @@ export interface IHttpClientService {
 
   /**
    * Performs a PUT request.
-   * @template T The expected type of the response data.
-   * @param url The URL to request.
-   * @param data Optional data to send in the request body.
-   * @param config Optional Axios request configuration.
+   * @template T - The expected type of the response data.
+   * @param url - The URL to request.
+   * @param data - The data to send in the request body.
+   * @param config - Optional Axios request configuration.
    * @returns A promise that resolves to an AxiosResponse.
    */
   put<T = any>(
@@ -46,22 +46,19 @@ export interface IHttpClientService {
 
   /**
    * Performs a DELETE request.
-   * @template T The expected type of the response data.
-   * @param url The URL to request.
-   * @param config Optional Axios request configuration.
+   * @template T - The expected type of the response data.
+   * @param url - The URL to request.
+   * @param config - Optional Axios request configuration.
    * @returns A promise that resolves to an AxiosResponse.
    */
-  delete<T = any>(
-    url: string,
-    config?: AxiosRequestConfig,
-  ): Promise<AxiosResponse<T>>;
+  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>;
 
   /**
    * Performs a PATCH request.
-   * @template T The expected type of the response data.
-   * @param url The URL to request.
-   * @param data Optional data to send in the request body.
-   * @param config Optional Axios request configuration.
+   * @template T - The expected type of the response data.
+   * @param url - The URL to request.
+   * @param data - The data to send in the request body.
+   * @param config - Optional Axios request configuration.
    * @returns A promise that resolves to an AxiosResponse.
    */
   patch<T = any>(
@@ -71,37 +68,31 @@ export interface IHttpClientService {
   ): Promise<AxiosResponse<T>>;
 
   /**
-   * Performs a HEAD request.
-   * @param url The URL to request.
-   * @param config Optional Axios request configuration.
-   * @returns A promise that resolves to an AxiosResponse (typically only headers).
-   */
-  head(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse>;
-
-  /**
    * Performs an OPTIONS request.
-   * @param url The URL to request.
-   * @param config Optional Axios request configuration.
+   * @template T - The expected type of the response data.
+   * @param url - The URL to request.
+   * @param config - Optional Axios request configuration.
    * @returns A promise that resolves to an AxiosResponse.
    */
-  options(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse>;
+  options<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>;
 
   /**
-   * A generic request method.
-   * @template T The expected type of the response data.
-   * @param config The Axios request configuration.
+   * Performs a HEAD request.
+   * @template T - The expected type of the response data.
+   * @param url - The URL to request.
+   * @param config - Optional Axios request configuration.
+   * @returns A promise that resolves to an AxiosResponse.
+   */
+  head<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>;
+
+  /**
+   * Allows making a generic request.
+   * @template T - The expected type of the response data.
+   * @param config - Axios request configuration.
    * @returns A promise that resolves to an AxiosResponse.
    */
   request<T = any>(config: AxiosRequestConfig): Promise<AxiosResponse<T>>;
 }
 
-/**
- * Token for injecting the HttpClientService.
- */
 export const IHttpClientService = Symbol('IHttpClientService');
-
-/**
- * Utility type for typed Axios errors.
- */
-export type TypedAxiosError<T = any, D = any> = AxiosError<T, D>;
 ```

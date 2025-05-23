@@ -1,148 +1,120 @@
 ```typescript
-import { Injectable, LoggerService as NestLoggerService, Scope } from '@nestjs/common';
+import { Injectable, LoggerService as NestLoggerService, Scope, Inject } from '@nestjs/common';
 import { PinoLogger, InjectPinoLogger } from 'nestjs-pino';
-// TODO: Import TracingService if it's used for correlation IDs
-// import { TracingService } from '../tracing/tracing.service';
+import { TracingService } from '../tracing/tracing.service'; // To get correlation IDs
 
 /**
- * @Injectable LoggingService
+ * @class LoggingService
  * @description Service providing application-wide logging capabilities.
- * Wraps a Pino logger instance and offers methods like `log`, `error`, `warn`, `debug`, `verbose`.
- * Ensures logs are structured (JSON) and include contextual information like correlation IDs.
+ * Wraps Pino logger (via `nestjs-pino`) and implements NestJS `LoggerService`.
+ * Ensures logs are structured JSON and include contextual information.
+ * REQ-11-016, REQ-14-015, REQ-16-025, REQ-16-026, REQ-15-016
  */
-@Injectable({ scope: Scope.TRANSIENT }) // Transient to get unique context for each class
+@Injectable({ scope: Scope.TRANSIENT }) // TRANSIENT if context changes per injection, otherwise DEFAULT
 export class LoggingService implements NestLoggerService {
   private context?: string;
 
   constructor(
-    @InjectPinoLogger(LoggingService.name) // Default context if none set
+    @InjectPinoLogger(LoggingService.name) // Inject logger with default context
     private readonly pinoLogger: PinoLogger,
-    // @Inject(TracingService) private readonly tracingService: TracingService, // Uncomment if used
+    @Inject(TracingService) private readonly tracingService: TracingService, // Make optional if TracingModule is optional
   ) {}
 
   setContext(context: string) {
     this.context = context;
-    // Re-bind the logger with the new context if pinoLogger supports it directly,
-    // or pinoLogger instance from nestjs-pino might already handle context.
-    // `nestjs-pino`'s `PinoLogger` already has `setContext`
-    this.pinoLogger.setContext(context);
+    // PinoLogger's context can be set if desired, or managed within this service's log methods
+    // this.pinoLogger.setContext(context);
   }
 
-  // TODO: REQ-16-026 - Automatically include correlation ID from TracingService in each log entry.
-  // This is often handled at the `pino-http` level for request logs,
-  // but for application logs, it needs to be added manually or via logger context.
-  // One way is to use AsyncLocalStorage with TracingService to store/retrieve correlationId.
-  // Or pass it explicitly. For now, assuming pino-http handles it for request scope.
-
-  private getExtraFields(): Record<string, any> {
-    const extra: Record<string, any> = {};
-    // const correlationId = this.tracingService?.getCorrelationId(); // Example
-    // if (correlationId) {
-    //   extra.correlationId = correlationId;
-    // }
-    // Add other common fields if needed
-    return extra;
+  private getTraceContext() {
+    const traceId = this.tracingService.getCurrentTraceId(); // Assuming TracingService has such a method
+    const segmentId = this.tracingService.getCurrentSegmentId(); // Assuming TracingService has such a method
+    return traceId ? { 'x-amzn-trace-id': traceId, segmentId } : {};
   }
 
-  log(message: any, context?: string | Record<string, any>, ...args: any[]) {
-    const extra = this.getExtraFields();
-    if (typeof context === 'string') {
-      this.pinoLogger.info({ ...extra, contextOverride: context }, message, ...args);
-    } else if (typeof context === 'object') {
-      this.pinoLogger.info({ ...extra, ...context }, message, ...args);
+  log(message: any, context?: string, ...optionalParams: [...any, string?]) {
+    const traceContext = this.getTraceContext();
+    const effectiveContext = context || this.context || LoggingService.name;
+    if (typeof message === 'object') {
+        this.pinoLogger.info({ ...message, ...traceContext, context: effectiveContext }, ...optionalParams);
     } else {
-      this.pinoLogger.info(extra, message, ...args);
+        this.pinoLogger.info({ ...traceContext, context: effectiveContext }, message, ...optionalParams);
     }
   }
 
-  error(message: any, traceOrContext?: string | Record<string, any> | Error, contextOrArgs?: string | Record<string, any> | any[], ...args: any[]) {
-    const extra = this.getExtraFields();
-    let trace: string | undefined;
-    let localContext: string | Record<string, any> | undefined;
-    let finalArgs = args;
+  error(message: any, traceOrContext?: string | undefined, context?: string | undefined, ...optionalParams: [...any, string?]) {
+    const traceContext = this.getTraceContext();
+    let stackTrace: string | undefined = undefined;
+    let effectiveContext = context || this.context || LoggingService.name;
+    let mainMessage = message;
 
-    if (traceOrContext instanceof Error) {
-        // error(message, error, context, ...args)
-        // error(message, error, ...args)
-        const error = traceOrContext;
-        message = message || error.message; // Use error message if primary message is falsy
-        trace = error.stack;
-        extra.error = { name: error.name, message: error.message, stack: error.stack, ...error }; // Spread custom error props
-
-        if (typeof contextOrArgs === 'string' || typeof contextOrArgs === 'object' && !Array.isArray(contextOrArgs)) {
-            localContext = contextOrArgs as string | Record<string, any>;
-        } else if (Array.isArray(contextOrArgs)) {
-            finalArgs = contextOrArgs;
-        }
-
-    } else if (typeof traceOrContext === 'string' && (typeof contextOrArgs !== 'string' && (typeof contextOrArgs !== 'object' || Array.isArray(contextOrArgs)))) {
-        // error(message, trace, ...args)
-        trace = traceOrContext;
-        if (Array.isArray(contextOrArgs)) {
-           finalArgs = contextOrArgs;
-        }
-    } else if (typeof traceOrContext === 'string' || (typeof traceOrContext === 'object' && !Array.isArray(traceOrContext))) {
-        // error(message, context, ...args)
-        localContext = traceOrContext;
-        if (Array.isArray(contextOrArgs)) {
-           finalArgs = contextOrArgs;
-        }
+    // NestJS error logging often passes trace as the second argument.
+    // If traceOrContext looks like a stack trace, use it.
+    if (typeof traceOrContext === 'string' && (traceOrContext.includes('\n') || traceOrContext.includes('Error:'))) {
+      stackTrace = traceOrContext;
+    } else if (typeof traceOrContext === 'string') {
+      effectiveContext = traceOrContext; // It's likely context
+    }
+    
+    if (message instanceof Error) {
+        mainMessage = message.message;
+        stackTrace = stackTrace || message.stack;
     }
 
+    const logObject: Record<string, any> = {
+        ...traceContext,
+        context: effectiveContext,
+        err: message instanceof Error ? { message: message.message, stack: message.stack, name: message.name } : undefined,
+        stack: stackTrace, // Explicitly include stack if available
+    };
 
-    const logObject: Record<string, any> = { ...extra };
-    if (trace) logObject.trace = trace;
 
-    if (typeof localContext === 'string') {
-        logObject.contextOverride = localContext;
-        this.pinoLogger.error(logObject, message, ...finalArgs);
-    } else if (typeof localContext === 'object') {
-        this.pinoLogger.error({ ...logObject, ...localContext }, message, ...finalArgs);
+    if (typeof mainMessage === 'object' && !(mainMessage instanceof Error)) {
+        this.pinoLogger.error({...mainMessage, ...logObject }, 'Error occurred');
     } else {
-        this.pinoLogger.error(logObject, message, ...finalArgs);
+        this.pinoLogger.error(logObject, mainMessage as string, ...optionalParams);
     }
   }
 
-  warn(message: any, context?: string | Record<string, any>, ...args: any[]) {
-    const extra = this.getExtraFields();
-     if (typeof context === 'string') {
-      this.pinoLogger.warn({ ...extra, contextOverride: context }, message, ...args);
-    } else if (typeof context === 'object') {
-      this.pinoLogger.warn({ ...extra, ...context }, message, ...args);
+  warn(message: any, context?: string, ...optionalParams: [...any, string?]) {
+    const traceContext = this.getTraceContext();
+    const effectiveContext = context || this.context || LoggingService.name;
+     if (typeof message === 'object') {
+        this.pinoLogger.warn({ ...message, ...traceContext, context: effectiveContext }, ...optionalParams);
     } else {
-      this.pinoLogger.warn(extra, message, ...args);
+        this.pinoLogger.warn({ ...traceContext, context: effectiveContext }, message, ...optionalParams);
     }
   }
 
-  debug(message: any, context?: string | Record<string, any>, ...args: any[]) {
-    const extra = this.getExtraFields();
-    if (typeof context === 'string') {
-      this.pinoLogger.debug({ ...extra, contextOverride: context }, message, ...args);
-    } else if (typeof context === 'object') {
-      this.pinoLogger.debug({ ...extra, ...context }, message, ...args);
+  debug(message: any, context?: string, ...optionalParams: [...any, string?]) {
+    // NestJS default logger doesn't call debug if log level is higher.
+    // Pino handles this internally based on its configured level.
+    const traceContext = this.getTraceContext();
+    const effectiveContext = context || this.context || LoggingService.name;
+    if (typeof message === 'object') {
+        this.pinoLogger.debug({ ...message, ...traceContext, context: effectiveContext }, ...optionalParams);
     } else {
-      this.pinoLogger.debug(extra, message, ...args);
+        this.pinoLogger.debug({ ...traceContext, context: effectiveContext }, message, ...optionalParams);
     }
   }
 
-  verbose(message: any, context?: string | Record<string, any>, ...args: any[]) {
-    const extra = this.getExtraFields();
-    if (typeof context === 'string') {
-      this.pinoLogger.trace({ ...extra, contextOverride: context }, message, ...args); // Pino uses 'trace' for verbose
-    } else if (typeof context === 'object') {
-      this.pinoLogger.trace({ ...extra, ...context }, message, ...args);
+  verbose(message: any, context?: string, ...optionalParams: [...any, string?]) {
+    const traceContext = this.getTraceContext();
+    const effectiveContext = context || this.context || LoggingService.name;
+    if (typeof message === 'object') {
+        this.pinoLogger.trace({ ...message, ...traceContext, context: effectiveContext }, ...optionalParams); // Pino uses 'trace' for verbose
     } else {
-      this.pinoLogger.trace(extra, message, ...args);
+        this.pinoLogger.trace({ ...traceContext, context: effectiveContext }, message, ...optionalParams);
     }
   }
 
-  // REQ-15-016: Handles logging of audit trail information when invoked by services.
-  audit(action: string, details: Record<string, any>) {
-    const auditContext = 'Audit'; // Specific context for audit logs
-    this.log(
-        `AUDIT: ${action}`,
-        { ...details, auditAction: action }, // Ensure action is part of structured payload
-        auditContext
+  // For audit logging REQ-15-016
+  audit(action: string, details: Record<string, any>, context?: string) {
+    const traceContext = this.getTraceContext();
+    const effectiveContext = context || this.context || LoggingService.name;
+    this.pinoLogger.info(
+        { audit: true, action, details, ...traceContext, context: effectiveContext },
+        `AUDIT: ${action}`
     );
   }
 }

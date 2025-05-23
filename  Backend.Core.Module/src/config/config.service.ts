@@ -1,62 +1,20 @@
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-
-// TODO: Define IAppConfig in src/config/config.interface.ts and import it.
-// This is a minimal placeholder for required properties by other core services.
-export interface IAppConfig {
-  NODE_ENV: 'development' | 'production' | 'test';
-  PORT: number;
-  AWS_REGION: string;
-  LOG_LEVEL: string;
-  LOG_REDACTION_PATHS?: string[];
-  SECRETS_CACHE_TTL_SECONDS: number;
-  DEFAULT_CACHE_TTL_SECONDS: number;
-  S3_DEFAULT_SSE_ALGORITHM: string;
-  HTTP_CLIENT_DEFAULT_TIMEOUT_MS: number;
-
-  // For TypeORM (potentially from secrets)
-  DB_HOST?: string;
-  DB_PORT?: number;
-  DB_USERNAME?: string;
-  DB_DATABASE?: string;
-  DB_SSL_REJECT_UNAUTHORIZED?: boolean;
-  DB_CA_CERT?: string;
-  TYPEORM_LOGGING?: boolean; // Example TypeORM specific config
-
-  // For Redis (potentially from secrets)
-  REDIS_HOST?: string;
-  REDIS_PORT?: number;
-  REDIS_TLS_ENABLED?: boolean;
-
-  // For SQS
-  SQS_QUEUE_URL_PREFIX?: string; // Example: https://sqs.us-east-1.amazonaws.com/123456789012/
-
-  // For S3
-  S3_ASSETS_BUCKET_NAME?: string;
-
-  // For DynamoDB
-  DYNAMODB_LOCAL_ENDPOINT?: string;
-  ENABLE_DYNAMODB_LOCAL_ENDPOINT?: boolean;
-
-  // Feature Flags (AppConfig)
-  APPCONFIG_APPLICATION_ID?: string;
-  APPCONFIG_ENVIRONMENT_ID?: string;
-  APPCONFIG_PROFILE_ID?: string;
-
-  // Add other specific config properties as needed by the application
-  [key: string]: any; // Allow for other keys if not strictly typed here
-}
+import { ConfigService as NestJsConfigService } from '@nestjs/config';
+import { IAppConfig, NodeEnv } from './config.interface'; // Assuming IAppConfig and NodeEnv are in config.interface.ts
 
 /**
- * @Injectable CoreConfigService
+ * @class CoreConfigService
  * @description Service to access strongly-typed application configuration values.
  * Wraps the NestJS `ConfigService` to provide convenient getter methods for
  * specific configuration properties defined in `IAppConfig`.
+ * REQ-16-020
  */
 @Injectable()
 export class CoreConfigService {
-  constructor(private readonly nestConfigService: ConfigService<IAppConfig, true>) {}
+  constructor(
+    private readonly nestJsConfigService: NestJsConfigService<IAppConfig, true>,
+  ) {}
 
   /**
    * Generic getter for any configuration key.
@@ -64,101 +22,138 @@ export class CoreConfigService {
    * @returns The configuration value.
    */
   get<T extends keyof IAppConfig>(key: T): IAppConfig[T] {
-    return this.nestConfigService.get<IAppConfig[T]>(key as any); // Cast as any because ConfigService's key type is string
+    return this.nestJsConfigService.get<IAppConfig[T]>(key, { infer: true });
   }
 
-  getOrThrow<T extends keyof IAppConfig>(key: T): NonNullable<IAppConfig[T]> {
-    const value = this.nestConfigService.get<IAppConfig[T]>(key as any);
-    if (value === undefined || value === null) {
-      throw new Error(`Configuration missing for key: ${String(key)}`);
-    }
-    return value as NonNullable<IAppConfig[T]>;
-  }
-
-  getNodeEnv(): IAppConfig['NODE_ENV'] {
-    return this.getOrThrow('NODE_ENV');
-  }
+  // Specific Getters as per SDS Section 5.1 CoreConfigService
 
   getPort(): number {
-    return Number(this.getOrThrow('PORT'));
+    return this.get('PORT');
+  }
+
+  getNodeEnv(): NodeEnv {
+    return this.get('NODE_ENV');
+  }
+
+  getDatabaseUrl(): string {
+    // This might be a composed secret or directly from env.
+    // If it's a secret ARN, SecretsService would be used elsewhere to resolve it.
+    // Assuming DATABASE_URL is a direct env var for now, or handled by TypeORM config factory.
+    return this.get('DATABASE_URL');
+  }
+
+  getRedisUrl(): string {
+    // Similar to DATABASE_URL, could be direct or an ARN for Secrets Manager.
+    return this.get('REDIS_URL');
   }
 
   getAwsRegion(): string {
-    return this.getOrThrow('AWS_REGION');
+    return this.get('AWS_REGION');
   }
 
-  getLogLevel(): string {
-    return this.get('LOG_LEVEL') || 'info';
-  }
-
-  getLogRedactionPaths(): string[] {
-    const paths = this.get('LOG_REDACTION_PATHS');
-    if (typeof paths === 'string') {
-        return paths.split(',');
+  getSqsQueueUrl(queueName: string): string {
+    // Example: queues are defined as SQS_QUEUE_USER_SERVICE, SQS_QUEUE_ORDER_SERVICE
+    // This getter could construct it or look up a specific key.
+    // For simplicity, let's assume a pattern or direct lookup.
+    const queueKey = `SQS_QUEUE_${queueName.toUpperCase()}_URL` as keyof IAppConfig;
+    if (this.has(queueKey)) {
+      return this.get(queueKey as any); // Type assertion needed due to dynamic key
     }
-    return paths || [];
+    // Fallback or specific logic if queues are named differently in IAppConfig
+    // Example: return `https://sqs.${this.getAwsRegion()}.amazonaws.com/ACCOUNT_ID/${queueName}`;
+    // For now, direct lookup.
+    const directQueueUrl = this.get(queueName as keyof IAppConfig); // if queueName is a direct key in IAppConfig
+    if (directQueueUrl) return directQueueUrl as string;
+
+    throw new Error(`SQS Queue URL for "${queueName}" not found in configuration.`);
+  }
+
+  getS3BucketName(bucketType: 'assets' | 'logs' | 'backups'): string {
+    const key = `S3_BUCKET_${bucketType.toUpperCase()}` as keyof IAppConfig;
+     if (this.has(key)) {
+      return this.get(key as any);
+    }
+    throw new Error(`S3 Bucket Name for type "${bucketType}" not found in configuration.`);
   }
 
   getSecretsCacheTTLSeconds(): number {
-    return Number(this.get('SECRETS_CACHE_TTL_SECONDS') || 300); // Default 5 minutes
+    return this.get('SECRETS_CACHE_TTL_SECONDS');
   }
 
-  getDefaultCacheTTLSeconds(): number {
-    return Number(this.get('DEFAULT_CACHE_TTL_SECONDS') || 3600); // Default 1 hour
+  // getFeatureFlag(key: string): boolean { // This is usually handled by FeatureFlagsService
+  //   // Feature flags might be loaded into IAppConfig or fetched dynamically.
+  //   // Assuming they are part of IAppConfig for this getter.
+  //   const flagKey = `FEATURE_${key.toUpperCase()}` as keyof IAppConfig;
+  //   return this.get(flagKey) as unknown as boolean; // Be cautious with direct casting
+  // }
+
+  getS3DefaultSseAlgorithm(): string | undefined { // REQ-15-002 mentions S3_DEFAULT_SSE_ALGORITHM
+    return this.get('S3_DEFAULT_SSE_ALGORITHM');
   }
 
-  getS3DefaultSseAlgorithm(): string {
-    return this.get('S3_DEFAULT_SSE_ALGORITHM') || 'AES256';
+  getHttpClientDefaultTimeoutMs(): number { // REQ-15-003 mentions HTTP_CLIENT_DEFAULT_TIMEOUT_MS
+    return this.get('HTTP_CLIENT_DEFAULT_TIMEOUT_MS');
   }
 
-  getHttpClientDefaultTimeoutMs(): number {
-    return Number(this.get('HTTP_CLIENT_DEFAULT_TIMEOUT_MS') || 5000); // Default 5 seconds
-  }
-
-  // Database related getters
-  getDbHost(): string | undefined { return this.get('DB_HOST'); }
-  getDbPort(): number | undefined { return this.get('DB_PORT') ? Number(this.get('DB_PORT')) : undefined; }
-  getDbUsername(): string | undefined { return this.get('DB_USERNAME'); }
-  getDbDatabase(): string | undefined { return this.get('DB_DATABASE'); }
-  getDbSslRejectUnauthorized(): boolean { return this.get('DB_SSL_REJECT_UNAUTHORIZED') === true || String(this.get('DB_SSL_REJECT_UNAUTHORIZED')).toLowerCase() === 'true'; }
-  getDbCaCert(): string | undefined { return this.get('DB_CA_CERT'); }
-  getTypeOrmLogging(): boolean { return this.get('TYPEORM_LOGGING') === true || String(this.get('TYPEORM_LOGGING')).toLowerCase() === 'true'; }
-
-
-  // Redis related getters
-  getRedisHost(): string | undefined { return this.get('REDIS_HOST'); }
-  getRedisPort(): number | undefined { return this.get('REDIS_PORT') ? Number(this.get('REDIS_PORT')) : undefined; }
-  isRedisTlsEnabled(): boolean { return this.get('REDIS_TLS_ENABLED') === true || String(this.get('REDIS_TLS_ENABLED')).toLowerCase() === 'true'; }
-
-
-  // SQS related getters
-  getSqsQueueUrl(queueName: string): string {
-    const prefix = this.get('SQS_QUEUE_URL_PREFIX');
-    if (prefix) {
-        return `${prefix}${queueName}`;
+  getLogRedactionPaths(): string[] { // REQ-16-026 mentions LOG_REDACTION_PATHS
+    const paths = this.get('LOG_REDACTION_PATHS');
+    if (typeof paths === 'string') {
+      return paths.split(',').map(p => p.trim());
     }
-    // Fallback or direct lookup if queue URLs are fully specified in env
-    return this.getOrThrow(queueName.toUpperCase() + '_QUEUE_URL' as any);
+    return Array.isArray(paths) ? paths : [];
   }
 
-  // S3 related getters
-  getS3BucketName(bucketType: 'assets' | 'logs' | 'backups'): string {
-     const key = `S3_${bucketType.toUpperCase()}_BUCKET_NAME` as keyof IAppConfig;
-     return this.getOrThrow(key);
+  getLogLevel(): string {
+    return this.get('LOG_LEVEL');
   }
 
-  // DynamoDB
+  getDefaultCacheTtlSeconds(): number {
+    return this.get('DEFAULT_CACHE_TTL_SECONDS');
+  }
+
+  // Helper to check if a key exists, useful for optional configurations
+  has(key: keyof IAppConfig): boolean {
+    return this.nestJsConfigService.get(key) !== undefined;
+  }
+
+  // Feature flag related getters for AppConfig integration (if flags are in IAppConfig)
+  getAppConfigApplicationId(): string | undefined {
+    return this.get('APPCONFIG_APPLICATION_ID');
+  }
+
+  getAppConfigEnvironmentId(): string | undefined {
+    return this.get('APPCONFIG_ENVIRONMENT_ID');
+  }
+
+  getAppConfigProfileId(): string | undefined {
+    return this.get('APPCONFIG_PROFILE_ID');
+  }
+
+  // Database specific getters (used by TypeORM config factory)
+  getDatabaseHost(): string { return this.get('DB_HOST'); }
+  getDatabasePort(): number { return this.get('DB_PORT'); }
+  getDatabaseUsername(): string { return this.get('DB_USERNAME'); }
+  getDatabasePasswordSecretName(): string { return this.get('DB_PASSWORD_SECRET_NAME'); } // ARN or name
+  getDatabaseName(): string { return this.get('DB_NAME'); }
+  getDatabaseSslEnabled(): boolean { return this.get('DB_SSL_ENABLED'); }
+
+  // Redis specific getters (used by Redis config factory)
+  getRedisHost(): string { return this.get('REDIS_HOST'); }
+  getRedisPort(): number { return this.get('REDIS_PORT'); }
+  getRedisPasswordSecretName(): string | undefined { return this.get('REDIS_PASSWORD_SECRET_NAME'); } // ARN or name
+  getRedisTlsEnabled(): boolean { return this.get('REDIS_TLS_ENABLED'); }
+
+  // X-Ray Tracing
+  isXRayEnabled(): boolean {
+    return this.get('XRAY_ENABLED');
+  }
+
+  // DynamoDB local endpoint
   getDynamoDBLocalEndpoint(): string | undefined {
     return this.get('DYNAMODB_LOCAL_ENDPOINT');
   }
-
   isDynamoDBLocalEndpointEnabled(): boolean {
-    return this.get('ENABLE_DYNAMODB_LOCAL_ENDPOINT') === true || String(this.get('ENABLE_DYNAMODB_LOCAL_ENDPOINT')).toLowerCase() === 'true';
+    return !!this.get('DYNAMODB_LOCAL_ENDPOINT');
   }
-
-  // Feature Flags
-  getAppConfigApplicationId(): string | undefined { return this.get('APPCONFIG_APPLICATION_ID'); }
-  getAppConfigEnvironmentId(): string | undefined { return this.get('APPCONFIG_ENVIRONMENT_ID'); }
-  getAppConfigProfileId(): string | undefined { return this.get('APPCONFIG_PROFILE_ID'); }
 }
 ```

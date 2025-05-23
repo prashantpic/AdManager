@@ -1,19 +1,18 @@
 ```typescript
 import { Module } from '@nestjs/common';
-// TODO: Implement CoreTypeOrmModule and CoreDynamoDBModule in their respective files.
-// For now, these are placeholders.
-// import { CoreTypeOrmModule } from './typeorm/typeorm.module';
-// import { CoreDynamoDBModule } from './dynamodb/dynamodb.module';
+import { CoreTypeOrmModule } from './typeorm/typeorm.module';
+import { CoreDynamoDBModule } from './dynamodb/dynamodb.module';
 
+/**
+ * @class DatabaseModule
+ * @description Main NestJS module for database functionalities.
+ * It imports and configures specific database modules like `CoreTypeOrmModule` (for PostgreSQL)
+ * and `CoreDynamoDBModule`.
+ * REQ-11-008, REQ-11-009
+ */
 @Module({
-  imports: [
-    // CoreTypeOrmModule, // Uncomment once CoreTypeOrmModule is implemented
-    // CoreDynamoDBModule, // Uncomment once CoreDynamoDBModule is implemented
-  ],
-  exports: [
-    // CoreTypeOrmModule, // Uncomment once CoreTypeOrmModule is implemented
-    // CoreDynamoDBModule, // Uncomment once CoreDynamoDBModule is implemented
-  ],
+  imports: [CoreTypeOrmModule, CoreDynamoDBModule],
+  exports: [CoreTypeOrmModule, CoreDynamoDBModule],
 })
 export class DatabaseModule {}
 ```

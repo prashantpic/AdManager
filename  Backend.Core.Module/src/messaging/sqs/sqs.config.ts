@@ -3,24 +3,27 @@ import { SQSClientConfig } from '@aws-sdk/client-sqs';
 import { CoreConfigService } from '../../config/config.service';
 
 /**
- * Configuration factory for the AWS SQS SDK client.
- * @param configService - The core configuration service.
+ * @function sqsConfigFactory
+ * @description Configuration factory for AWS SQS SDK client.
+ * Retrieves AWS region and optional local endpoint URL from `CoreConfigService`.
+ * REQ-11-011, REQ-16-011
+ * @param coreConfigService - Service for accessing application configuration.
  * @returns SQSClientConfig object.
  */
-export const sqsClientConfigFactory = (
-  configService: CoreConfigService,
+export const sqsConfigFactory = (
+  coreConfigService: CoreConfigService,
 ): SQSClientConfig => {
-  const region = configService.getAwsRegion();
-  // TODO: Add local endpoint configuration if using LocalStack or similar for development.
-  // const endpoint = configService.getSqsEndpoint(); // Example
+  const region = coreConfigService.getAwsRegion();
+  // const endpoint = coreConfigService.getSqsLocalEndpoint(); // If local SQS (e.g., LocalStack) is used
+
   const config: SQSClientConfig = {
     region,
-    // endpoint: endpoint // Uncomment if local endpoint is configured
   };
 
-  // REQ-11-011, REQ-16-011: Basic SQS client configuration.
-  // Credentials should be handled by IAM roles or environment variables/shared credentials file.
-  // TODO: Add other SQS client configurations if needed, e.g., retryStrategy, logger.
+  // if (endpoint && coreConfigService.isSqsLocalEndpointEnabled()) {
+  //   config.endpoint = endpoint;
+  // }
+  // Credentials will be automatically picked up from the environment.
 
   return config;
 };

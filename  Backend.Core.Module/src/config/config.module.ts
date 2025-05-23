@@ -1,40 +1,62 @@
 ```typescript
-import { Module, Global } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { Global, Module } from '@nestjs/common';
+import { ConfigModule as NestJsConfigModule, ConfigFactory } from '@nestjs/config';
 import { CoreConfigService } from './config.service';
-// TODO: Define environmentValidationSchema in src/config/validation-schema.ts and import it.
-// For now, using a placeholder. It should be a Joi or Zod schema.
-// import * as Joi from 'joi';
-// const environmentValidationSchema = Joi.object({
-//   NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
-//   PORT: Joi.number().default(3000),
-//   AWS_REGION: Joi.string().required(),
-//   // Add other expected environment variables here
-// });
-
-const environmentValidationSchema = {}; // Placeholder
+import { environmentValidationSchema } from './validation-schema';
+import { IAppConfig } from './config.interface';
+// import { loadFromParameterStore } from './parameter-store.loader'; // Placeholder for potential SSM loader
 
 /**
- * @module CoreConfigModule
- * @description NestJS module for application configuration management.
- * Uses `@nestjs/config` to load environment variables and provides a `CoreConfigService`
- * for typed access to configuration values.
+ * @description Loads basic environment configurations.
+ * For `forRootAsync`, `process.env` (populated by `envFilePath`) is the base.
+ * This loader can be used to add defaults or transform values before validation if needed,
+ * or to integrate other synchronous config sources.
+ * For truly async sources like Parameter Store, a separate async loader function would be added to the `load` array.
  */
-@Global()
+const appConfigLoader: ConfigFactory<Partial<IAppConfig>> = () => {
+  // Example: If we needed to provide default values or parse specific env vars before Joi validation
+  // const port = parseInt(process.env.PORT, 10);
+  // return {
+  //   PORT: isNaN(port) ? 3000 : port, // Joi will validate this later
+  //   NODE_ENV: process.env.NODE_ENV || 'development',
+  // };
+  // For most cases where .env files are primary and Joi handles parsing/defaults,
+  // this loader can be minimal or even an empty object if `process.env` is sufficient.
+  return {};
+};
+
+/**
+ * @class CoreConfigModule
+ * @description NestJS module for application configuration management.
+ * Uses `@nestjs/config.ConfigModule.forRootAsync` to load environment variables,
+ * validate them using `environmentValidationSchema`, and provides `CoreConfigService` for typed access.
+ * REQ-16-020
+ */
+@Global() // Makes CoreConfigService globally available after this module is imported in AppModule
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true, // Makes ConfigService available globally without importing CoreConfigModule
-      envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
-      ignoreEnvFile: process.env.NODE_ENV === 'production', // In prod, expect env vars to be set directly
-      validationSchema: environmentValidationSchema as any, // Cast to any due to placeholder
+    NestJsConfigModule.forRootAsync({
+      isGlobal: true, // Makes the underlying NestJS ConfigService globally available
+      envFilePath: [`.env.${process.env.NODE_ENV || 'development'}`, '.env'],
+      load: [
+        appConfigLoader,
+        // async () => { // Example for an async loader like Parameter Store
+        //   if (process.env.USE_PARAMETER_STORE === 'true') {
+        //     return await loadFromParameterStore({
+        //        region: process.env.AWS_REGION,
+        //        parameters: { /* paths to parameters */ }
+        //     });
+        //   }
+        //   return {};
+        // },
+      ],
+      validationSchema: environmentValidationSchema, // Joi schema for validation
       validationOptions: {
-        allowUnknown: true, // Allow unknown env variables (they won't be loaded into ConfigService)
-        abortEarly: false, // Validate all env variables, not just the first error
+        allowUnknown: false, // As per SDS: Disallow properties not in schema
+        abortEarly: true,    // As per SDS: Stop validation on first error
       },
-      // TODO: Implement loading from AWS Systems Manager Parameter Store if REQ-16-020 specifies and feature flag is enabled.
-      // This might require `forRootAsync` and a custom config loader.
-      // load: [() => ({})] // Example if using load functions
+      cache: true, // Enable caching of configuration variables
+      expandVariables: true, // Enable variable expansion (e.g., VAR=${OTHER_VAR})
     }),
   ],
   providers: [CoreConfigService],

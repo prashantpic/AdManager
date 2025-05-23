@@ -1,37 +1,38 @@
 ```typescript
-import { Logger } from '@nestjs/common';
-// TODO: Import DynamoDBService once defined in ./dynamodb.service.ts
-// For now, using a placeholder for DynamoDBService methods.
-interface IDynamoDBService {
-  getItem<T>(tableName: string, key: Record<string, any>): Promise<T | undefined>;
-  putItem<T>(tableName: string, item: T): Promise<any>; // Replace 'any' with PutCommandOutput
-  updateItem<T>(
-    tableName: string,
-    key: Record<string, any>,
-    updateExpression: string,
-    expressionAttributeValues: Record<string, any>,
-    expressionAttributeNames?: Record<string, string>,
-    conditionExpression?: string,
-  ): Promise<any>; // Replace 'any' with UpdateCommandOutput
-  deleteItem(tableName: string, key: Record<string, any>): Promise<any>; // Replace 'any' with DeleteCommandOutput
-  // Add query and scan methods if needed in the base repository
-}
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  GetCommand,
+  PutCommand,
+  UpdateCommand,
+  DeleteCommand,
+  QueryCommand,
+  ScanCommand,
+  QueryCommandInput,
+  ScanCommandInput,
+  GetCommandInput,
+  PutCommandInput,
+  UpdateCommandInput,
+  DeleteCommandInput,
+} from '@aws-sdk/lib-dynamodb';
+import { DynamoDBService } from './dynamodb.service'; // Assuming DynamoDBService is created
 
 /**
- * Abstract base repository for DynamoDB tables.
- * Provides common CRUD operations for items in a specific DynamoDB table.
- * @template TItem - The type of the item stored in the DynamoDB table.
- * @template TKey - The type of the primary key for the table (can be a simple object for composite keys).
+ * @class BaseDynamoRepository
+ * @template TItem - The type of the item stored in DynamoDB.
+ * @template TKey - The type of the primary key for the item.
+ * @description Optional generic base repository class for DynamoDB tables.
+ * Provides a structured way to interact with specific tables if a repository pattern is desired.
+ * REQ-11-009, REQ-14-005
  */
-export abstract class BaseDynamoRepository<TItem, TKey extends Record<string, any>> {
+@Injectable() // To allow injection if this base class is extended and used as a provider
+export abstract class BaseDynamoRepository<
+  TItem extends Record<string, any>,
+  TKey extends Record<string, any>,
+> {
   protected readonly logger: Logger;
 
-  /**
-   * @param dynamoDBService - Instance of DynamoDBService for interacting with DynamoDB.
-   * @param tableName - The name of the DynamoDB table this repository manages.
-   */
   constructor(
-    protected readonly dynamoDBService: IDynamoDBService, // Replace with actual DynamoDBService
+    protected readonly dynamoDBService: DynamoDBService,
     protected readonly tableName: string,
   ) {
     this.logger = new Logger(`${this.constructor.name}<${tableName}>`);
@@ -39,84 +40,112 @@ export abstract class BaseDynamoRepository<TItem, TKey extends Record<string, an
 
   /**
    * Retrieves an item by its key.
-   * @param key - The primary key of the item to retrieve.
-   * @returns The item if found, otherwise undefined.
+   * @param key - The primary key of the item.
+   * @param options - Optional GetCommandInput overrides.
+   * @returns The item, or undefined if not found.
    */
-  async findById(key: TKey): Promise<TItem | undefined> {
-    this.logger.debug(`Finding item by key in table ${this.tableName}`, key);
-    return this.dynamoDBService.getItem<TItem>(this.tableName, key);
+  async findById(key: TKey, options?: Partial<GetCommandInput>): Promise<TItem | undefined> {
+    this.logger.debug(`findById called with key: ${JSON.stringify(key)}`);
+    const params: GetCommandInput = {
+      TableName: this.tableName,
+      Key: key,
+      ...options,
+    };
+    const result = await this.dynamoDBService.getClient().send(new GetCommand(params));
+    return result.Item as TItem | undefined;
   }
 
   /**
-   * Creates or replaces an item in the table.
+   * Creates or replaces an item.
    * @param item - The item to create or replace.
-   * @returns The result of the put operation (e.g., from PutCommandOutput).
+   * @param options - Optional PutCommandInput overrides.
+   * @returns The output of the PutCommand.
    */
-  async createOrUpdate(item: TItem): Promise<any> {
-    this.logger.debug(`Creating/updating item in table ${this.tableName}`, item);
-    return this.dynamoDBService.putItem<TItem>(this.tableName, item);
+  async createOrUpdate(item: TItem, options?: Partial<PutCommandInput>) {
+    this.logger.debug(`createOrUpdate called with item: ${JSON.stringify(item)}`);
+    const params: PutCommandInput = {
+      TableName: this.tableName,
+      Item: item,
+      ...options,
+    };
+    return this.dynamoDBService.getClient().send(new PutCommand(params));
   }
 
   /**
-   * Updates an existing item identified by its key.
-   * This is a placeholder for a more specific update method.
-   * You'll need to define updateExpression, expressionAttributeValues, etc.
+   * Updates an existing item.
    * @param key - The primary key of the item to update.
-   * @param updateData - Object containing fields to update. This needs to be translated into DynamoDB update expressions.
-   * @returns The result of the update operation.
+   * @param updateExpression - The update expression.
+   * @param expressionAttributeValues - Values for the expression attributes.
+   * @param expressionAttributeNames - Names for the expression attributes (optional).
+   * @param options - Optional UpdateCommandInput overrides.
+   * @returns The output of the UpdateCommand.
    */
   async update(
     key: TKey,
-    // This is a simplified signature. A real update needs more DynamoDB specific params.
-    // updateExpression: string,
-    // expressionAttributeValues: Record<string, any>,
-    // expressionAttributeNames?: Record<string, string>
-    updateData: Partial<TItem>,
-  ): Promise<any> {
-    this.logger.debug(`Updating item ${JSON.stringify(key)} in table ${this.tableName} with data`, updateData);
-    // This is a naive implementation. A robust update would build UpdateExpression,
-    // ExpressionAttributeValues, and ExpressionAttributeNames dynamically from updateData.
-    // For simplicity, this example assumes a simple structure or requires manual expression building.
-    let updateExpression = 'SET ';
-    const expressionAttributeValues: Record<string, any> = {};
-    const expressionAttributeNames: Record<string, string> = {};
-    let first = true;
-    Object.keys(updateData).forEach((k, index) => {
-        if (!first) updateExpression += ', ';
-        const attrNamePlaceholder = `#attr${index}`;
-        const attrValuePlaceholder = `:val${index}`;
-        updateExpression += `${attrNamePlaceholder} = ${attrValuePlaceholder}`;
-        expressionAttributeNames[attrNamePlaceholder] = k;
-        expressionAttributeValues[attrValuePlaceholder] = (updateData as any)[k];
-        first = false;
-    });
-
-    if (Object.keys(expressionAttributeValues).length === 0) {
-        this.logger.warn('Update called with no data to update.');
-        return Promise.resolve({}); // Or throw error
-    }
-
-    return this.dynamoDBService.updateItem(
-      this.tableName,
-      key,
-      updateExpression,
-      expressionAttributeValues,
-      expressionAttributeNames,
+    updateExpression: string,
+    expressionAttributeValues: Record<string, any>,
+    expressionAttributeNames?: Record<string, string>,
+    options?: Partial<UpdateCommandInput>,
+  ) {
+    this.logger.debug(
+      `update called with key: ${JSON.stringify(key)}, expression: ${updateExpression}`,
     );
+    const params: UpdateCommandInput = {
+      TableName: this.tableName,
+      Key: key,
+      UpdateExpression: updateExpression,
+      ExpressionAttributeValues: expressionAttributeValues,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ReturnValues: 'ALL_NEW', // Or 'UPDATED_NEW', 'NONE', etc.
+      ...options,
+    };
+    return this.dynamoDBService.getClient().send(new UpdateCommand(params));
   }
 
   /**
    * Deletes an item by its key.
    * @param key - The primary key of the item to delete.
-   * @returns The result of the delete operation.
+   * @param options - Optional DeleteCommandInput overrides.
+   * @returns The output of the DeleteCommand.
    */
-  async delete(key: TKey): Promise<any> {
-    this.logger.debug(`Deleting item by key in table ${this.tableName}`, key);
-    return this.dynamoDBService.deleteItem(this.tableName, key);
+  async delete(key: TKey, options?: Partial<DeleteCommandInput>) {
+    this.logger.debug(`delete called with key: ${JSON.stringify(key)}`);
+    const params: DeleteCommandInput = {
+      TableName: this.tableName,
+      Key: key,
+      ...options,
+    };
+    return this.dynamoDBService.getClient().send(new DeleteCommand(params));
   }
 
-  // TODO: Add more specific query/scan methods as needed, e.g.,
-  // async queryBySecondaryIndex(indexName: string, keyConditions: any): Promise<TItem[]>
-  // async scanWithFilter(filterExpression: string, expressionAttributeValues: any): Promise<TItem[]>
+  /**
+   * Performs a query operation.
+   * @param queryInput - The QueryCommandInput parameters.
+   * @returns An array of items matching the query.
+   */
+  async query(queryInput: Omit<QueryCommandInput, 'TableName'>): Promise<TItem[]> {
+    this.logger.debug(`query called with input: ${JSON.stringify(queryInput)}`);
+    const params: QueryCommandInput = {
+      TableName: this.tableName,
+      ...queryInput,
+    };
+    const result = await this.dynamoDBService.getClient().send(new QueryCommand(params));
+    return (result.Items as TItem[]) || [];
+  }
+
+  /**
+   * Performs a scan operation. Use with caution on large tables.
+   * @param scanInput - The ScanCommandInput parameters.
+   * @returns An array of items matching the scan.
+   */
+  async scan(scanInput?: Omit<ScanCommandInput, 'TableName'>): Promise<TItem[]> {
+    this.logger.debug(`scan called with input: ${JSON.stringify(scanInput)}`);
+    const params: ScanCommandInput = {
+      TableName: this.tableName,
+      ...scanInput,
+    };
+    const result = await this.dynamoDBService.getClient().send(new ScanCommand(params));
+    return (result.Items as TItem[]) || [];
+  }
 }
 ```

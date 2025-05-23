@@ -2,64 +2,80 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { CoreConfigService } from '../../config/config.service';
 import { ISecretsService } from '../../config/secrets/secrets.interface';
-// TODO: Import BaseEntity and other entities once defined
-// import { BaseEntity } from './base.entity';
+import { LoggerOptions } from 'typeorm/driver/DriverOptions';
+import * as path from 'path';
+
+// Assuming BaseEntity and other entities will be in 'dist/**/*.entity.js' post-compilation
+// For development with ts-node, 'src/**/*.entity.ts' might also be needed or a dynamic path.
+const entitiesPath = path.join(__dirname, '/../../**/*.entity{.ts,.js}'); // More robust path
+const migrationsPath = path.join(__dirname, '/../../../migrations/*{.ts,.js}');
+
 
 /**
- * TypeORM configuration factory.
- * Dynamically creates TypeORM connection options using configuration and secrets services.
- * @param configService - The core configuration service.
- * @param secretsService - The secrets management service.
+ * @function typeOrmConfigFactory
+ * @description Dynamic configuration factory for TypeORM.
+ * Retrieves database connection parameters (host, port, username, password, database name)
+ * from `CoreConfigService` and `SecretsService`.
+ * REQ-11-008, REQ-14-004, REQ-16-007, REQ-14-012, REQ-15-002
+ * @param coreConfigService - Service for accessing general application configuration.
+ * @param secretsService - Service for retrieving secrets like database passwords.
  * @returns A promise resolving to TypeOrmModuleOptions.
  */
 export const typeOrmConfigFactory = async (
-  configService: CoreConfigService,
+  coreConfigService: CoreConfigService,
   secretsService: ISecretsService,
 ): Promise<TypeOrmModuleOptions> => {
-  // REQ-14-012: Database credentials should be fetched from Secrets Manager
-  const dbPassword = await secretsService.getSecret<string>(
-    'DB_PASSWORD_SECRET_NAME', // Replace with actual secret name/ARN
-  );
+  const dbPasswordSecretName = coreConfigService.getDatabasePasswordSecretName();
+  let dbPassword = process.env.DB_PASSWORD; // Fallback for local dev if secret name is not set
 
-  // REQ-15-002: SSL must be enabled for RDS connections.
-  // SSL options might depend on the environment or specific RDS setup.
-  // For AWS RDS, often requires downloading the CA bundle.
-  const sslOptions: any = {
-    rejectUnauthorized: configService.getDbSslRejectUnauthorized(),
-  };
-  if (configService.getDbCaCert()) {
-    sslOptions.ca = configService.getDbCaCert(); // Path to CA cert or cert content
+  if (dbPasswordSecretName) {
+     try {
+        // Assuming the secret value is the password string directly, not a JSON object.
+        dbPassword = await secretsService.getSecret<string>(dbPasswordSecretName, { parseJson: false });
+      } catch (error) {
+        console.error(`Failed to retrieve database password from Secrets Manager (secret: ${dbPasswordSecretName}):`, error);
+        // Depending on policy, might throw or fallback if local env var is allowed.
+        // For now, if secret retrieval fails and DB_PASSWORD env var is not set, connection will fail.
+        if (!dbPassword) {
+            throw new Error(`Database password secret '${dbPasswordSecretName}' could not be retrieved and no DB_PASSWORD env var fallback.`);
+        }
+      }
   }
+
+
+  const typeOrmLoggerLevelMapping: { [key: string]: LoggerOptions } = {
+    debug: 'all',
+    info: ['query', 'error', 'schema'],
+    warn: ['warn', 'error'],
+    error: ['error'],
+  };
+  const nodeEnv = coreConfigService.getNodeEnv();
+  const appLogLevel = coreConfigService.getLogLevel();
 
 
   return {
     type: 'postgres',
-    host: configService.getDbHost(),
-    port: configService.getDbPort(),
-    username: configService.getDbUsername(),
-    password: dbPassword, // From Secrets Manager
-    database: configService.getDbDatabase(),
-    entities: [
-        // __dirname + '/../../**/*.entity{.ts,.js}', // Path from dist
-        // 'dist/**/*.entity.js' // More common path for NestJS build
-        // TODO: Update this path based on project structure and entity locations
-        // It should point to where your compiled .entity.js files will be.
-        // BaseEntity and other entities should be included here.
-        // For example: [User, Product, Order, BaseEntity]
-        // Or using pattern: join(__dirname, '../..', '**', '*.entity.{ts,js}')
-        'dist/**/*.entity{.ts,.js}',
-    ],
-    // TODO: Configure migrations path
-    // migrationsTableName: 'migrations',
-    // migrations: ['dist/database/migrations/*{.ts,.js}'],
-    // cli: {
-    //   migrationsDir: 'src/database/migrations',
-    // },
-    synchronize: configService.getNodeEnv() === 'development', // REQ-16-007: Set to false in production
-    logging: configService.getTypeOrmLogging(), // Use NestJS logger or 'all' for TypeORM specific logging
-    ssl: configService.getNodeEnv() === 'production' ? sslOptions : false, // Enforce SSL in production
-    autoLoadEntities: true, // Can simplify entity loading if entities are defined in modules
-    keepConnectionAlive: true, // Useful for serverless environments or tests
+    host: coreConfigService.getDatabaseHost(),
+    port: coreConfigService.getDatabasePort(),
+    username: coreConfigService.getDatabaseUsername(),
+    password: dbPassword,
+    database: coreConfigService.getDatabaseName(),
+    entities: [entitiesPath],
+    // entities: [__dirname + '/../../**/*.entity{.ts,.js}'], // Alternative path
+    migrationsTableName: 'typeorm_migrations',
+    migrations: [migrationsPath],
+    // migrations: [__dirname + '/../../../migrations/*{.ts,.js}'],
+    migrationsRun: nodeEnv === 'production', // Auto-run migrations in production
+    synchronize: nodeEnv === 'development', // Auto-create schema in dev (false for prod)
+    logging: typeOrmLoggerLevelMapping[appLogLevel] || ['error'], // Map app log level to TypeORM logging
+    ssl: coreConfigService.getDatabaseSslEnabled()
+      ? { rejectUnauthorized: true } // Basic SSL, for RDS typically true. Adjust if self-signed certs are used.
+      : false,
+    extra: {
+      // e.g., connection pool settings
+      max: coreConfigService.get('DB_CONNECTION_POOL_MAX') || 10, // Example custom config
+    },
+    keepConnectionAlive: true, // Useful for Lambda environments or long-running processes
   };
 };
 ```

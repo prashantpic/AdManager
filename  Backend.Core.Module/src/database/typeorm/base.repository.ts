@@ -9,108 +9,119 @@ import {
   FindOptionsWhere,
 } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
-// TODO: Import BaseEntity once defined in ./base.entity.ts
-// For now, using a placeholder.
-interface BaseEntity {
-  id: string | number; // Assuming id is string (UUID) or number
-  createdAt: Date;
-  updatedAt: Date;
-  // version?: number;
-}
+import { BaseEntity } from './base.entity'; // Assuming BaseEntity will be created
 
 /**
- * Abstract base repository for TypeORM entities.
- * Provides common CRUD operations.
- * @template TEntity - The TypeORM entity type, extending BaseEntity.
+ * @class BaseRepository
+ * @template T - A TypeORM entity that extends BaseEntity.
+ * @description Generic base repository class for TypeORM entities, providing common CRUD operations
+ * and potentially other shared query logic.
+ * REQ-11-008, REQ-14-004
  */
-export abstract class BaseRepository<TEntity extends BaseEntity> {
-  constructor(protected readonly repository: Repository<TEntity>) {}
+export abstract class BaseRepository<T extends BaseEntity> {
+  constructor(protected readonly repository: Repository<T>) {}
 
   /**
-   * Creates a new entity instance.
-   * @param data - The data for the new entity.
-   * @returns The new entity instance.
+   * Creates a new entity instance. Does not save it.
+   * @param entityLike - The data for the new entity.
+   * @returns The created entity instance.
    */
-  create(data: DeepPartial<TEntity>): TEntity {
-    return this.repository.create(data);
+  create(entityLike: DeepPartial<T>): T {
+    return this.repository.create(entityLike);
   }
 
   /**
-   * Saves an entity (inserts or updates).
-   * @param entity - The entity to save.
-   * @returns The saved entity.
+   * Saves a given entity or array of entities. If the entity already exist in the database, it is updated.
+   * If the entity does not exist in the database, it is inserted.
+   * @param entity - The entity or array of entities to save.
+   * @returns The saved entity or array of entities.
    */
-  async save(entity: TEntity): Promise<TEntity> {
-    return this.repository.save(entity);
+  async save(entity: DeepPartial<T>): Promise<T>;
+  async save(entities: DeepPartial<T>[]): Promise<T[]>;
+  async save(entityOrEntities: DeepPartial<T> | DeepPartial<T>[]): Promise<T | T[]> {
+    // TypeORM's save method handles both single entity and array of entities.
+    // However, to satisfy TypeScript's overload resolution, we might need to cast.
+    if (Array.isArray(entityOrEntities)) {
+        return this.repository.save(entityOrEntities as DeepPartial<T>[]);
+    }
+    return this.repository.save(entityOrEntities as DeepPartial<T>);
   }
+
 
   /**
-   * Saves multiple entities.
-   * @param entities - An array of entities to save.
-   * @returns The saved entities.
-   */
-  async saveMany(entities: TEntity[]): Promise<TEntity[]> {
-    return this.repository.save(entities);
-  }
-
-  /**
-   * Finds an entity by its ID.
-   * @param id - The ID of the entity.
-   * @param options - Optional find options.
-   * @returns The found entity or null if not found.
-   */
-  async findOneById(id: string | number, options?: FindOneOptions<TEntity>): Promise<TEntity | null> {
-    const where = { id } as FindOptionsWhere<TEntity>;
-    return this.repository.findOne({ where, ...options });
-  }
-
-   /**
-   * Finds the first entity that matches some id or find options.
+   * Finds first entity by a given find options. If entity was not found in the database - undefined is returned.
    * @param options - Find options.
-   * @returns The found entity or null if not found.
+   * @returns The found entity or undefined.
    */
-  async findOne(options: FindOneOptions<TEntity>): Promise<TEntity | null> {
-    return this.repository.findOne(options);
+  async findOne(options: FindOneOptions<T>): Promise<T | undefined> {
+    const result = await this.repository.findOne(options);
+    return result === null ? undefined : result;
   }
 
   /**
-   * Finds all entities matching the given options.
-   * @param options - Optional find options.
+   * Finds entity by its ID. If entity was not found in the database - undefined is returned.
+   * @param id - The ID of the entity.
+   * @param options - Additional find options.
+   * @returns The found entity or undefined.
+   */
+  async findOneById(id: string, options?: Omit<FindOneOptions<T>, 'where'>): Promise<T | undefined> {
+    // TypeORM's `findOneBy` is simpler for ID lookups.
+    // Constructing FindOneOptions for findOne to include relations etc.
+    const findOptions: FindOneOptions<T> = {
+        ...options,
+        where: { id } as FindOptionsWhere<T>, // Cast to FindOptionsWhere<T>
+    };
+    const result = await this.repository.findOne(findOptions);
+    return result === null ? undefined : result;
+  }
+
+  /**
+   * Finds all entities that match given find options.
+   * @param options - Find options.
    * @returns An array of found entities.
    */
-  async findAll(options?: FindManyOptions<TEntity>): Promise<TEntity[]> {
+  async findAll(options?: FindManyOptions<T>): Promise<T[]> {
     return this.repository.find(options);
   }
 
   /**
-   * Updates an entity by its ID.
-   * @param id - The ID of the entity to update.
-   * @param updateData - The data to update.
-   * @returns The result of the update operation.
+   * Updates entity by a given criteria or entity ID.
+   * @param criteria - The criteria to update by (e.g., ID or other conditions).
+   * @param partialEntity - The fields to update.
+   * @returns UpdateResult object.
    */
   async update(
-    id: string | number,
-    updateData: QueryDeepPartialEntity<TEntity>,
+    criteria: string | FindOptionsWhere<T>,
+    partialEntity: QueryDeepPartialEntity<T>,
   ): Promise<UpdateResult> {
-    return this.repository.update(id, updateData);
+    return this.repository.update(criteria as any, partialEntity); // 'any' for criteria due to string | FindOptionsWhere<T>
   }
 
   /**
-   * Deletes an entity by its ID.
-   * @param id - The ID of the entity to delete.
-   * @returns The result of the delete operation.
+   * Deletes entities by a given criteria or entity ID.
+   * @param criteria - The criteria to delete by (e.g., ID or other conditions).
+   * @returns DeleteResult object.
    */
-  async delete(id: string | number): Promise<DeleteResult> {
-    return this.repository.delete(id);
+  async delete(criteria: string | FindOptionsWhere<T>): Promise<DeleteResult> {
+    return this.repository.delete(criteria as any); // 'any' for criteria due to string | FindOptionsWhere<T>
   }
 
   /**
-   * Counts entities that match find options.
-   * @param options - Optional find options.
-   * @returns The number of entities.
+   * Counts entities that match given find options.
+   * @param options - Find options.
+   * @returns The number of matching entities.
    */
-  async count(options?: FindManyOptions<TEntity>): Promise<number> {
+  async count(options?: FindManyOptions<T>): Promise<number> {
     return this.repository.count(options);
+  }
+
+  /**
+   * Checks if entity with given find options exist.
+   * @param options - Find options.
+   * @returns True if entity exists, false otherwise.
+   */
+  async exists(options: FindManyOptions<T>): Promise<boolean> {
+    return this.repository.exists(options);
   }
 }
 ```
