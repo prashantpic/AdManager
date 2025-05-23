@@ -1,0 +1,6 @@
+export enum AdNetworkType {
+  GOOGLE_ADS = 'GOOGLE_ADS',
+  FACEBOOK_ADS = 'FACEBOOK_ADS',
+  TIKTOK_ADS = 'TIKTOK_ADS',
+  SNAPCHAT_ADS = 'SNAPCHAT_ADS',
+}
