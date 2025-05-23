@@ -7,35 +7,32 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { I18nextProvider } from 'react-i18next';
 
 import App from './App';
-import { store } from './store'; // Will be created in src/store/index.ts
-import theme from './core/theme/theme'; // Will be created in src/core/theme/theme.ts
-import i18n from './core/i18n/i18n'; // Will be created in src/core/i18n/i18n.ts
-import GlobalStyles from './core/theme/GlobalStyles'; // Will be created in src/core/theme/GlobalStyles.tsx
+import store from './store'; // Placeholder: store setup will be in src/store/index.ts
+import theme from './core/theme/theme'; // Placeholder: theme setup will be in src/core/theme/theme.ts
+import i18n from './core/i18n/i18n'; // Placeholder: i18n setup will be in src/core/i18n/i18n.ts
 import './index.css';
-// import ErrorBoundary from './core/errors/ErrorBoundary'; // Will be created in src/core/errors/ErrorBoundary.tsx
+
+// REQ-FE-001: Main SPA entry point
+// REQ-FE-005: Initialize React, Router, State Management, Theme, i18n
 
 const rootElement = document.getElementById('root');
-
 if (!rootElement) {
-  throw new Error("Could not find root element with id 'root'");
+  throw new Error("Failed to find the root element with ID 'root'.");
 }
 
 const root = ReactDOM.createRoot(rootElement);
 
 root.render(
   <React.StrictMode>
-    {/* <ErrorBoundary> */}
-      <Provider store={store}>
-        <ThemeProvider theme={theme}>
-          <I18nextProvider i18n={i18n}>
-            <CssBaseline />
-            <GlobalStyles />
-            <BrowserRouter>
-              <App />
-            </BrowserRouter>
-          </I18nextProvider>
-        </ThemeProvider>
-      </Provider>
-    {/* </ErrorBoundary> */}
+    <Provider store={store}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <I18nextProvider i18n={i18n}>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </I18nextProvider>
+      </ThemeProvider>
+    </Provider>
   </React.StrictMode>
 );

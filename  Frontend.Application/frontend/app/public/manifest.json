@@ -1,25 +1,20 @@
 {
-  "short_name": "Ad Manager",
+  "short_name": "AdManager",
   "name": "Ad Manager Platform",
   "icons": [
     {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "assets/logo192.png",
+      "src": "assets/logo_192.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "assets/logo512.png",
+      "src": "assets/logo_512.png",
       "type": "image/png",
       "sizes": "512x512"
     }
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
+  "theme_color": "#007bff",
   "background_color": "#ffffff"
 }

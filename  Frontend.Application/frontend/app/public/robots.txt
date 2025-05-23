@@ -1,6 +1,6 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow: /private/
+Disallow: /api/ # Disallow API endpoints if they are served from the same domain
 Allow: /
 
 Sitemap: /sitemap.xml
