@@ -4,13 +4,16 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
-  Logger, // Using NestJS Logger as a fallback if LoggingService is not yet available/injected
+  Injectable,
+  LoggerService,
+  Inject,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { ValidationException } from './validation.exception';
-import { BaseException } from './base.exception';
-// Assuming LoggingService will be in this path, adjust if different
-// import { LoggingService } from '../../logging/logging.service';
+import { ValidationException } from './validation.exception'; // Assumed to exist
+import { BaseException } from './base.exception'; // Assumed to exist
+// import { LoggingService } from '../../logging/logging.service'; // Assumed to be injectable via a token or direct class
+import { LOGGING_SERVICE } from '../../logging/logging.constants'; // Assuming a token for LoggingService
+import { ErrorCodesConstants } from '../constants/error-codes.constants'; // Assumed to exist
 
 interface ErrorResponse {
   statusCode: number;
@@ -22,10 +25,11 @@ interface ErrorResponse {
 }
 
 @Catch()
+@Injectable()
 export class GlobalHttpExceptionFilter implements ExceptionFilter {
-  // constructor(private readonly loggingService: LoggingService) {}
-  // Using NestJS Logger for now if LoggingService DI is complex at this stage of generation
-  private readonly logger = new Logger(GlobalHttpExceptionFilter.name);
+  constructor(
+    @Inject(LOGGING_SERVICE) private readonly logger: LoggerService,
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
@@ -37,81 +41,85 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
     let errorCode: string | undefined;
     let details: any | undefined;
 
-    if (exception instanceof HttpException) {
+    const timestamp = new Date().toISOString();
+    const path = request.url;
+
+    if (exception instanceof ValidationException) {
       statusCode = exception.getStatus();
-      const errorResponse = exception.getResponse();
-      if (typeof errorResponse === 'string') {
-        message = errorResponse;
-      } else if (typeof errorResponse === 'object' && errorResponse !== null) {
-        message = (errorResponse as any).message || exception.message;
-        errorCode = (errorResponse as any).errorCode; // For BaseException
-        details = (errorResponse as any).details || (errorResponse as any).errors; // For ValidationException or custom details
+      const exceptionResponse = exception.getResponse() as any;
+      message = exceptionResponse.message || 'Input data validation failed';
+      errorCode = exceptionResponse.errorCode || ErrorCodesConstants.VALIDATION_ERROR;
+      details = exceptionResponse.details || exception.validationErrors;
+    } else if (exception instanceof BaseException) {
+      statusCode = exception.getStatus();
+      const exceptionResponse = exception.getResponse() as any;
+      if (typeof exceptionResponse === 'string') {
+        message = exceptionResponse;
+      } else {
+        message = exceptionResponse.message || exception.message;
+        errorCode = exceptionResponse.errorCode;
+        details = exceptionResponse.details;
+      }
+    } else if (exception instanceof HttpException) {
+      statusCode = exception.getStatus();
+      const exceptionResponse = exception.getResponse();
+      if (typeof exceptionResponse === 'string') {
+        message = exceptionResponse;
+      } else if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
+        message = (exceptionResponse as any).message || exception.message;
+        errorCode = (exceptionResponse as any).error; // Default NestJS error field
+        // If 'errorCode' is a specific field from our custom HttpExceptions
+        if ((exceptionResponse as any).errorCode) {
+            errorCode = (exceptionResponse as any).errorCode;
+        }
+        details = (exceptionResponse as any).details || (exceptionResponse as any).validationErrors;
       } else {
         message = exception.message;
       }
-
-      if (exception instanceof ValidationException) {
-        errorCode = exception.errorCode || 'VALIDATION_ERROR';
-        details = exception.getResponse()['errors'] || exception.getResponse()['details'] || exception.getValidationErrors();
-      } else if (exception instanceof BaseException) {
-        errorCode = exception.errorCode;
-      }
-    } else if (exception instanceof Error) {
-      statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
-      message = 'Internal server error';
-      // this.loggingService.error(exception.message, exception.stack, `${request.method} ${request.url}`);
-      this.logger.error(
-        `Unhandled error: ${exception.message}`,
-        exception.stack,
-        `${request.method} ${request.url}`,
-      );
     } else {
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
-      message = 'An unexpected error occurred';
-      // this.loggingService.error('Unexpected error', undefined, `${request.method} ${request.url}`, exception);
-      this.logger.error(
-        'Unexpected error',
-        undefined,
-        `${request.method} ${request.url}`,
-      );
-    }
-    
-    // Ensure statusCode is set
-    if (!statusCode) {
-        statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
+      message = 'Internal server error. Please try again later.';
+      errorCode = 'INTERNAL_SERVER_ERROR';
+      // In a production environment, you might not want to expose details of unknown errors
+      // For debugging, you might include (exception as Error).message
     }
 
-
-    // Log detailed error for HttpExceptions as well
-    if (exception instanceof HttpException) {
-        // this.loggingService.error(
-        //   `HTTP Exception: ${message}`,
-        //   exception.stack,
-        //   `${request.method} ${request.url} - Status: ${statusCode}`,
-        //   details || exception.getResponse(),
-        // );
-         this.logger.error(
-           `HTTP Exception: ${message} - Path: ${request.url} - Method: ${request.method}`,
-           exception.stack,
-           `${GlobalHttpExceptionFilter.name} - Status: ${statusCode}`,
-         );
-    }
-
-
-    const errorResponseBody: ErrorResponse = {
+    const errorLog = {
+      timestamp,
+      path,
       statusCode,
-      timestamp: new Date().toISOString(),
-      path: request.url,
+      message,
+      errorCode,
+      details,
+      exception: exception instanceof Error ? exception.stack : JSON.stringify(exception),
+      userId: (request as any).user?.id, // Example: if user context is available on request
+      correlationId: request.headers['x-correlation-id'] || request.headers['X-Correlation-ID'],
+    };
+
+    this.logger.error(
+      `HTTP Exception: ${message}`,
+      JSON.stringify(errorLog, null, 2), // Pretty print for readability in logs if they are text-based
+      GlobalHttpExceptionFilter.name,
+    );
+    
+    // For structured JSON logging, the logger service itself should handle stringification
+    // this.logger.error({ message: `HTTP Exception: ${message}`, ...errorLog }, GlobalHttpExceptionFilter.name);
+
+
+    const errorResponse: ErrorResponse = {
+      statusCode,
+      timestamp,
+      path,
       message,
     };
 
     if (errorCode) {
-      errorResponseBody.errorCode = errorCode;
+      errorResponse.errorCode = errorCode;
     }
-    if (details) {
-      errorResponseBody.details = details;
+    if (details && Object.keys(details).length > 0) {
+      errorResponse.details = details;
     }
 
-    response.status(statusCode).json(errorResponseBody);
+    response.status(statusCode).json(errorResponse);
   }
 }
