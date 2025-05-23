@@ -1,3 +1,4 @@
 export * from './base.exception';
 export * from './validation.exception';
-// export * from './http-exception.filter'; // To be added in a later iteration
+// GlobalHttpExceptionFilter will be exported here once defined in its own file.
+// export * from './http-exception.filter';

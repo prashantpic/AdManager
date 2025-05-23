@@ -1,10 +1,8 @@
-// This file serves as a barrel file for common type definitions.
-// It can re-export types defined in other .ts files within this directory,
-// or declare utility types.
-// For `environment.d.ts`, it primarily augments global NodeJS.ProcessEnv,
-// so direct exports from it might not be common unless it also exports specific types.
+// This barrel file is for exporting common type definitions.
+// Example:
+// export * from './custom-type';
+// export * from './environment.d'; // .d.ts files typically augment global scope or specific modules
 
-// Example of a utility type that could be defined here:
-// export type Nullable<T> = T | null | undefined;
-
-// export * from './some-other-types'; // If you have other type definition files
+// Since environment.d.ts augments global NodeJS.ProcessEnv,
+// there might not be specific types to export directly from it for consumption.
+// This file can be used for other shared utility types.

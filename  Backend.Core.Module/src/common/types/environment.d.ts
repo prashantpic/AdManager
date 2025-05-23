@@ -1,26 +1,31 @@
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { IAppConfig } from '../../config/config.interface'; // Import to ensure IAppConfig is resolved
+/**
+ * @file TypeScript declaration file to provide strong typing for process.env variables.
+ * @namespace NodeJS
+ * @description This file augments the global NodeJS.ProcessEnv interface.
+ *              It should reflect the properties defined in IAppConfig.
+ */
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+import { IAppConfig } from '../../config/config.interface'; // Adjust path as necessary
 
 declare global {
   namespace NodeJS {
-    // Extend ProcessEnv with the properties defined in IAppConfig
-    // This provides type safety when accessing process.env
-    // Note: Actual values are strings, conversion to number/boolean happens in ConfigService/validation.
-    interface ProcessEnv extends Record<keyof IAppConfig, string | undefined> {
-      // Explicitly defining a few common ones for clarity,
-      // but the Record above makes it dynamic based on IAppConfig.
-      NODE_ENV?: 'development' | 'production' | 'test' | string;
-      PORT?: string; // Will be parsed to number
-      LOG_LEVEL?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent' | string;
+    // It's often better to use `ConfigService<IAppConfig>` for type safety
+    // rather than directly relying on `process.env` types everywhere.
+    // However, this provides basic typing if `process.env` is accessed directly.
+    // This should ideally mirror the structure of IAppConfig.
+    interface ProcessEnv extends Partial<IAppConfig> {
+      NODE_ENV?: 'development' | 'production' | 'test' | 'staging';
+      PORT?: string; // Port is usually a string in process.env, convert to number in config service
       AWS_REGION?: string;
-      // Add other specific environment variables from IAppConfig here if needed for more specific typing
-      // e.g. DATABASE_URL_SECRET_NAME?: string;
-      // However, Record<keyof IAppConfig, string> should cover them generally.
+      // Add other key environment variables that might be accessed directly
+      // before CoreConfigService is available, or for scripts.
+      // However, primary source of truth for types is IAppConfig.
     }
   }
 }
 
-// If this file doesn't import/export anything,
-// you may need to add `export {};` to make it a module
-// and allow global augmentation if your tsconfig settings require it.
+// This export is necessary to treat this file as a module,
+// especially if you have "isolatedModules": true in tsconfig.json.
+// It doesn't export any value but signals to TypeScript that this file is a module.
 export {};

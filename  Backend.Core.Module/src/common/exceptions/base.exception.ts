@@ -1,17 +1,19 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { ErrorCodes } from '../constants/error-codes.constants';
+import { CommonErrorCodes } from '../constants/error-codes.constants';
 
 /**
- * @description Base class for custom application exceptions.
+ * @file Base class for custom application exceptions.
+ * @namespace AdManager.Platform.Backend.Core.Common.Exceptions
  */
+
 export class BaseException extends HttpException {
-  public readonly errorCode: ErrorCodes | string;
+  public readonly errorCode: string;
   public readonly details?: any;
 
   constructor(
     message: string | Record<string, any>,
     status: HttpStatus,
-    errorCode: ErrorCodes | string = ErrorCodes.UNKNOWN_ERROR,
+    errorCode: string = CommonErrorCodes.INTERNAL_SERVER_ERROR,
     details?: any,
   ) {
     super(message, status);

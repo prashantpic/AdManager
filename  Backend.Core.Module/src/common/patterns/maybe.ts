@@ -1,43 +1,29 @@
-const SOME_BRAND = Symbol('Some');
-const NONE_BRAND = Symbol('None');
-
 /**
- * @description Represents an optional value that might be present (Some) or absent (None).
+ * @file Implementation of the Maybe (Option) pattern for handling optional values.
+ * @namespace AdManager.Platform.Backend.Core.Common.Patterns
  */
-export type Maybe<T> = Some<T> | None<T>;
 
-/**
- * @description Represents the presence of a value.
- */
 export class Some<T> {
-  public readonly _brand = SOME_BRAND;
-  private readonly value: T;
+  public readonly value: T;
+  public readonly isSome = true;
+  public readonly isNone = false;
 
   constructor(value: T) {
     if (value === null || value === undefined) {
-      throw new Error('Cannot create Some with null or undefined value. Use None instead.');
+      throw new Error('Cannot create Some with null or undefined value.');
     }
     this.value = value;
   }
 
-  public isSome(): this is Some<T> {
-    return true;
-  }
-
-  public isNone(): this is None<T> {
-    return false;
-  }
-
   /**
-   * Unwraps the value. Throws an error if called on a None.
-   * @throws Error if this is a None (should not happen with Some).
+   * Unwraps the value. Throws if called on None (type system prevents this).
    */
   public unwrap(): T {
     return this.value;
   }
 
   /**
-   * Unwraps the value or returns a default value.
+   * Unwraps the value or returns a default if None.
    */
   public unwrapOr(_defaultValue: T): T {
     return this.value;
@@ -45,23 +31,15 @@ export class Some<T> {
 
   /**
    * Maps a Some<T> to Some<U> by applying a function to the contained value.
-   * If the function returns null or undefined, the result will be None<U>.
    */
-  public map<U>(fn: (value: T) => U | null | undefined): Maybe<U> {
-    const mappedValue = fn(this.value);
-    return mappedValue === null || mappedValue === undefined ? none() : some(mappedValue);
+  public map<U>(fn: (value: T) => U): Some<U> {
+    return new Some(fn(this.value));
   }
 
   /**
-   * Applies a function that returns a Maybe to the contained value.
-   * Useful for chaining operations that might return None.
-   */
-  public flatMap<U>(fn: (value: T) => Maybe<U>): Maybe<U> {
-    return fn(this.value);
-  }
-
-  /**
-   * Executes a side-effecting function if the value is Some.
+   * Calls the provided function with the contained value if Some, otherwise does nothing.
+   * @param fn The function to call with the value.
+   * @returns The original Some instance.
    */
   public ifSome(fn: (value: T) => void): this {
     fn(this.value);
@@ -69,69 +47,62 @@ export class Some<T> {
   }
 
   /**
-   * Executes a side-effecting function if the value is None (no-op for Some).
+   * Does nothing if Some.
+   * @param _fn The function to call (not called for Some).
+   * @returns The original Some instance.
    */
   public ifNone(_fn: () => void): this {
+    // Do nothing for Some
     return this;
   }
 }
 
-/**
- * @description Represents the absence of a value.
- */
-export class None<T> {
-  public readonly _brand = NONE_BRAND;
+export class None<T = unknown> {
+  // Adding a phantom type T to make None<T> assignable to Maybe<T>
+  // This value is never actually used.
+  private _phantom?: T;
+  public readonly isSome = false;
+  public readonly isNone = true;
 
   constructor() {
     // No value to store
   }
 
-  public isSome(): this is Some<T> {
-    return false;
-  }
-
-  public isNone(): this is None<T> {
-    return true;
-  }
-
   /**
-   * Unwraps the value. Throws an error because this is a None.
-   * @throws Error
+   * Unwraps the value. Throws if called on None.
    */
   public unwrap(): T {
-    throw new Error('Called unwrap on a None value');
+    throw new Error('Cannot unwrap None.');
   }
 
   /**
-   * Unwraps the value or returns a default value.
+   * Unwraps the value or returns a default if None.
    */
   public unwrapOr(defaultValue: T): T {
     return defaultValue;
   }
 
   /**
-   * Maps a None<T> to None<U> (no-op for None).
+   * Maps a None to None. The mapping function is not called.
    */
-  public map<U>(_fn: (value: T) => U | null | undefined): Maybe<U> {
-    return this as unknown as None<U>;
+  public map<U>(_fn: (value: T) => U): None<U> {
+    return new None<U>();
   }
 
   /**
-   * Applies a function that returns a Maybe to the contained value (no-op for None).
-   */
-  public flatMap<U>(_fn: (value: T) => Maybe<U>): Maybe<U> {
-    return this as unknown as None<U>;
-  }
-
-  /**
-   * Executes a side-effecting function if the value is Some (no-op for None).
+   * Does nothing if None.
+   * @param _fn The function to call (not called for None).
+   * @returns The original None instance.
    */
   public ifSome(_fn: (value: T) => void): this {
+    // Do nothing for None
     return this;
   }
 
   /**
-   * Executes a side-effecting function if the value is None.
+   * Calls the provided function if None, otherwise does nothing.
+   * @param fn The function to call.
+   * @returns The original None instance.
    */
   public ifNone(fn: () => void): this {
     fn();
@@ -139,41 +110,23 @@ export class None<T> {
   }
 }
 
-// Singleton instance for None to avoid multiple allocations
-const NONE_INSTANCE = new None<any>();
+export type Maybe<T> = Some<T> | None<T>;
 
-/**
- * Helper function to create a Some value.
- * Throws if value is null or undefined.
- */
-export function some<T>(value: T): Some<T> {
-  return new Some(value);
-}
+export const MaybeUtils = {
+  some: <T>(value: T): Some<T> => new Some(value),
+  none: <T = unknown>(): None<T> => new None<T>(),
 
-/**
- * Helper function to create a None value.
- */
-export function none<T = never>(): None<T> {
-  return NONE_INSTANCE as None<T>;
-}
+  isSome: <T>(maybe: Maybe<T>): maybe is Some<T> => maybe.isSome,
+  isNone: <T>(maybe: Maybe<T>): maybe is None<T> => maybe.isNone,
 
-/**
- * Creates a Maybe from a potentially null or undefined value.
- */
-export function fromNullable<T>(value: T | null | undefined): Maybe<T> {
-  return value === null || value === undefined ? none<T>() : some(value);
-}
-
-/**
- * Type guard to check if a Maybe is Some.
- */
-export function isSome<T>(maybe: Maybe<T>): maybe is Some<T> {
-  return maybe.isSome();
-}
-
-/**
- * Type guard to check if a Maybe is None.
- */
-export function isNone<T>(maybe: Maybe<T>): maybe is None<T> {
-  return maybe.isNone();
-}
+  /**
+   * Creates a Maybe from a value that might be null or undefined.
+   * @param value The value to convert.
+   * @returns Some<T> if value is not null or undefined, otherwise None<T>.
+   */
+  fromNullable: <T>(value: T | null | undefined): Maybe<T> => {
+    return value === null || value === undefined
+      ? MaybeUtils.none<T>()
+      : MaybeUtils.some(value);
+  },
+};

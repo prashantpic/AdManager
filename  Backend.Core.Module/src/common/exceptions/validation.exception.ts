@@ -1,36 +1,45 @@
 import { HttpStatus } from '@nestjs/common';
 import { ValidationError } from 'class-validator';
 import { BaseException } from './base.exception';
-import { ErrorCodes } from '../constants/error-codes.constants';
+import { CommonErrorCodes } from '../constants/error-codes.constants';
 
 /**
- * @description Custom exception for DTO validation errors.
- * REQ-14-006, REQ-15-013
+ * @file Custom exception for DTO validation errors.
+ * @namespace AdManager.Platform.Backend.Core.Common.Exceptions
+ * @requirement REQ-14-006, REQ-15-013
  */
+
+export interface DetailedValidationError {
+  field: string;
+  message: string;
+  constraints?: { [type: string]: string };
+}
+
 export class ValidationException extends BaseException {
-  constructor(errors: ValidationError[]) {
+  constructor(validationErrors: ValidationError[] | DetailedValidationError[]) {
+    const formattedErrors = ValidationException.formatErrors(validationErrors);
     super(
-      'Input data validation failed',
+      'Input validation failed',
       HttpStatus.BAD_REQUEST,
-      ErrorCodes.VALIDATION_ERROR,
-      ValidationException.formatErrors(errors),
+      CommonErrorCodes.VALIDATION_ERROR,
+      formattedErrors,
     );
   }
 
-  private static formatErrors(errors: ValidationError[]): Record<string, string[]> {
-    const formattedErrors: Record<string, string[]> = {};
-    errors.forEach((err) => {
-      if (err.constraints) {
-        formattedErrors[err.property] = Object.values(err.constraints);
-      }
-      // Handle nested validation errors if present
-      if (err.children && err.children.length > 0) {
-        const nestedErrors = this.formatErrors(err.children);
-        for (const key in nestedErrors) {
-          formattedErrors[`${err.property}.${key}`] = nestedErrors[key];
-        }
-      }
-    });
-    return formattedErrors;
+  private static formatErrors(
+    errors: ValidationError[] | DetailedValidationError[],
+  ): DetailedValidationError[] {
+    if (errors.length > 0 && 'property' in errors[0]) {
+      // It's ValidationError[]
+      return (errors as ValidationError[]).map((err) => ({
+        field: err.property,
+        message: err.constraints
+          ? Object.values(err.constraints).join(', ')
+          : 'Invalid value',
+        constraints: err.constraints,
+      }));
+    }
+    // It's already DetailedValidationError[]
+    return errors as DetailedValidationError[];
   }
 }

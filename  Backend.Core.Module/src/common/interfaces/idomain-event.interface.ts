@@ -1,18 +1,13 @@
 /**
- * @description Base interface for Domain Events in Domain-Driven Design.
- * Domain events represent something significant that has happened in the domain.
+ * @file Base interface for Domain Events in DDD.
+ * @namespace AdManager.Platform.Backend.Core.Common.Interfaces
  */
+
 export interface IDomainEvent<T = any> {
   /**
    * Unique identifier for the event instance.
    */
-  readonly eventId: string; // Typically a UUID
-
-  /**
-   * Name of the event.
-   * e.g., 'UserRegisteredEvent', 'OrderPlacedEvent'
-   */
-  readonly eventName: string;
+  readonly eventId: string;
 
   /**
    * Timestamp when the event occurred.
@@ -20,23 +15,29 @@ export interface IDomainEvent<T = any> {
   readonly timestamp: Date;
 
   /**
-   * Identifier of the aggregate root that this event pertains to, if applicable.
+   * The type or name of the event.
+   * @example "UserRegisteredEvent"
    */
-  readonly aggregateId?: string; // Typically a UUID
+  readonly type: string;
 
   /**
-   * Version of the aggregate root after this event was applied, if applicable.
-   * Useful for optimistic concurrency control or event sourcing.
+   * Identifier of the aggregate root that this event pertains to, if applicable.
+   */
+  readonly aggregateId?: string;
+
+  /**
+   * Version of the aggregate root after this event was applied.
+   * Useful for event sourcing or optimistic concurrency.
    */
   readonly aggregateVersion?: number;
 
   /**
-   * The payload of the event, containing relevant data.
+   * The payload or data associated with the event.
    */
   readonly payload: T;
 
   /**
-   * Metadata associated with the event, e.g., correlation ID, user ID.
+   * Metadata associated with the event, such as correlation ID, user ID, etc.
    */
   readonly metadata?: Record<string, any>;
 }

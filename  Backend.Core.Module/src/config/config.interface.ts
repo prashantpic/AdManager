@@ -1,97 +1,83 @@
-export type NodeEnv = 'development' | 'production' | 'test' | 'staging';
-export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
-export type S3SSEAlgorithm = 'AES256' | 'aws:kms';
-export type TypeOrmLogLevel = 'query' | 'error' | 'schema' | 'warn' | 'info' | 'log' | 'migration';
-
-
 /**
- * @description Interface defining the structure of the application's configuration.
- * These are typically sourced from environment variables and validated on startup.
+ * @file Interface defining the structure of the application's configuration object.
+ * @namespace AdManager.Platform.Backend.Core.Config
  */
+
 export interface IAppConfig {
-  // Application Core
-  NODE_ENV: NodeEnv;
+  // Application
+  NODE_ENV: 'development' | 'production' | 'test' | 'staging';
   PORT: number;
+  API_GLOBAL_PREFIX?: string; // e.g., 'api'
 
-  // Logging
-  LOG_LEVEL: LogLevel;
-  LOG_REDACTION_PATHS: string[]; // Comma-separated string from env, parsed to array
-  ENABLE_ADVANCED_LOGGING_DETAILS: boolean;
-
-  // AWS General
+  // AWS
   AWS_REGION: string;
-  AWS_ACCOUNT_ID?: string; // Optional, but useful for some ARN constructions
+  AWS_ACCESS_KEY_ID?: string; // Optional, for local dev if not using IAM roles
+  AWS_SECRET_ACCESS_KEY?: string; // Optional, for local dev
+  AWS_SESSION_TOKEN?: string; // Optional, for local dev or temporary credentials
 
-  // Secrets Management
-  SECRETS_MANAGER_ENDPOINT_URL?: string; // For local testing with localstack/moto
+  // Database (PostgreSQL - TypeORM)
+  DB_TYPE: 'postgres';
+  DB_HOST: string;
+  DB_PORT: number;
+  DB_USERNAME: string;
+  DB_DATABASE: string;
+  DB_PASSWORD_SECRET_NAME: string; // Name of the secret in Secrets Manager for DB password
+  DB_SYNCHRONIZE: boolean; // Should be false in production
+  DB_LOGGING: ('query' | 'error' | 'schema' | 'warn' | 'info' | 'log' | 'migration')[];
+  DB_SSL_ENABLED: boolean;
+  DB_SSL_REJECT_UNAUTHORIZED?: boolean; // For self-signed certs in dev
+  DB_SSL_CA_SECRET_NAME?: string; // Secret name for CA cert if needed
+
+  // Database (DynamoDB)
+  DYNAMODB_ENABLE_LOCAL: boolean;
+  DYNAMODB_LOCAL_ENDPOINT?: string;
+  // Table names can be dynamic or defined here, e.g.:
+  // DYNAMODB_TABLE_AUDIT_LOGS: string;
+
+  // Cache (Redis)
+  REDIS_HOST: string;
+  REDIS_PORT: number;
+  REDIS_PASSWORD_SECRET_NAME?: string; // Name of the secret for Redis password
+  REDIS_TLS_ENABLED: boolean;
+  DEFAULT_CACHE_TTL_SECONDS: number;
   SECRETS_CACHE_TTL_SECONDS: number;
 
-  // Parameter Store (for non-sensitive config)
-  USE_PARAMETER_STORE_FOR_NON_SENSITIVE_CONFIG: boolean;
-  SSM_PARAMETER_PREFIX?: string; // e.g., /<app-name>/<env>/
+  // Logging (Pino)
+  LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
+  LOG_REDACTION_PATHS: string[]; // e.g., ['req.headers.authorization', 'body.password']
 
-  // Database - TypeORM (PostgreSQL)
-  DB_HOST_SECRET_NAME: string;
-  DB_PORT_SECRET_NAME: string;
-  DB_USERNAME_SECRET_NAME: string;
-  DB_PASSWORD_SECRET_NAME: string;
-  DB_NAME_SECRET_NAME: string;
-  DB_CONNECTION_POOL_SIZE?: number; // max connections
-  DB_CONNECTION_TIMEOUT_MS?: number;
-  TYPEORM_SYNCHRONIZE: boolean; // Should be false in production
-  TYPEORM_LOGGING: TypeOrmLogLevel[] | boolean; // e.g., ['query', 'error'] or true/false
-  TYPEORM_MIGRATIONS_RUN: boolean;
-  TYPEORM_SSL_REJECT_UNAUTHORIZED: boolean; // For RDS SSL
+  // Tracing (AWS X-Ray)
+  XRAY_DAEMON_ADDRESS: string; // e.g., '127.0.0.1:2000'
+  XRAY_CONTEXT_MISSING_STRATEGY: 'LOG_ERROR' | 'RUNTIME_ERROR'; // How to handle missing context
+  ENABLE_XRAY_TRACING: boolean;
+  ENABLE_XRAY_TRACING_FULL?: boolean; // for AWS SDK patching (REQ-SDS)
 
-  // Database - DynamoDB
-  DYNAMODB_ENDPOINT_URL?: string; // For local development with DynamoDB Local
-  ENABLE_DYNAMODB_LOCAL_ENDPOINT: boolean;
-  // Table names would typically be here or constructed by services
-  // EXAMPLE_DYNAMODB_TABLE_NAME: string;
+  // SQS
+  // Example: SQS_MY_QUEUE_URL: string;
+  // Or a more generic way to get queue URLs based on name
 
-  // Caching - Redis (ElastiCache)
-  REDIS_HOST_SECRET_NAME: string;
-  REDIS_PORT_SECRET_NAME: string;
-  REDIS_PASSWORD_SECRET_NAME?: string; // If password protected
-  REDIS_USE_TLS: boolean; // For ElastiCache in-transit encryption
-  DEFAULT_CACHE_TTL_SECONDS: number;
-  ENABLE_REDIS_CACHE_DETAILED_LOGGING: boolean;
-
-  // Messaging - SQS
-  SQS_ENDPOINT_URL?: string; // For local testing with localstack
-  SQS_QUEUE_URL_PREFIX?: string; // e.g., https://sqs.us-east-1.amazonaws.com/123456789012/
-  // Specific queue names/URLs might be added here or derived
-  // EXAMPLE_SQS_QUEUE_NAME: string;
-
-  // Storage - S3
-  S3_ENDPOINT_URL?: string; // For local testing with localstack/minio
-  S3_DEFAULT_SSE_ALGORITHM?: S3SSEAlgorithm; // e.g., AES256 or aws:kms
-  S3_DEFAULT_BUCKET_NAME: string;
+  // S3
+  S3_DEFAULT_BUCKET: string;
   S3_ASSETS_BUCKET_NAME: string;
   S3_LOGS_BUCKET_NAME: string;
   S3_BACKUPS_BUCKET_NAME: string;
-  S3_PRESIGNED_URL_EXPIRATION_SECONDS: number;
+  S3_DEFAULT_SSE_ALGORITHM: 'AES256' | 'aws:kms'; // REQ-15-002, REQ-16-012
+  S3_KMS_KEY_ID?: string; // Required if S3_DEFAULT_SSE_ALGORITHM is 'aws:kms'
 
   // HTTP Client
-  HTTP_CLIENT_DEFAULT_TIMEOUT_MS: number;
-  HTTP_CLIENT_MAX_REDIRECTS?: number;
+  HTTP_CLIENT_DEFAULT_TIMEOUT_MS: number; // REQ-15-003
 
-  // Tracing - AWS X-Ray
-  ENABLE_XRAY_TRACING: boolean; // General toggle for X-Ray
-  ENABLE_XRAY_TRACING_FULL: boolean; // For AWS SDK call patching
-
-  // Feature Flags - AWS AppConfig
-  ENABLE_FEATURE_FLAGS: boolean;
-  FEATURE_FLAGS_APPCONFIG_APP_ID?: string;
-  FEATURE_FLAGS_APPCONFIG_ENV_ID?: string;
-  FEATURE_FLAGS_APPCONFIG_PROFILE_ID?: string;
-  FEATURE_FLAGS_POLL_INTERVAL_SECONDS?: number;
-  FEATURE_FLAGS_MAX_AGE_SECONDS?: number; // Cache duration for flags
+  // Feature Flags (e.g., AWS AppConfig)
+  APPCONFIG_APPLICATION_ID?: string;
+  APPCONFIG_ENVIRONMENT_ID?: string;
+  APPCONFIG_PROFILE_ID?: string;
+  // Specific feature flags, or loaded dynamically by FeatureFlagsService
+  FEATURE_FLAG_ENABLE_ADVANCED_LOGGING_DETAILS?: boolean;
+  FEATURE_FLAG_USE_PARAMETER_STORE_FOR_NON_SENSITIVE_CONFIG?: boolean;
+  FEATURE_FLAG_ENABLE_DYNAMODB_LOCAL_ENDPOINT?: boolean;
+  FEATURE_FLAG_ENABLE_REDIS_CACHE_DETAILED_LOGGING?: boolean;
 
   // Security
-  CORS_ORIGIN: string | string[] | boolean; // Comma-separated string from env, or boolean
-  GLOBAL_PREFIX?: string; // e.g., 'api/v1'
-
-  // Add other application-specific configurations as needed
-  API_KEY_SECRET_NAME?: string; // Example for an external service API key
+  CORS_ORIGIN: string[] | string | boolean; // For CORS configuration
+  HELMET_CONFIG?: Record<string, any>; // Configuration for Helmet middleware
 }

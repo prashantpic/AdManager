@@ -1,114 +1,131 @@
 import * as Joi from 'joi';
-import { NodeEnv, LogLevel, S3SSEAlgorithm, TypeOrmLogLevel } from './config.interface';
 
 /**
- * @description Validation schema for environment variables using Joi.
- * This schema is used by `@nestjs/config` to validate the environment during application bootstrap.
- * REQ-16-020
+ * @file Validation schema for environment variables using Joi.
+ * @namespace AdManager.Platform.Backend.Core.Config
+ * @requirement REQ-16-020
  */
-export const environmentValidationSchema = Joi.object<Record<keyof import('./config.interface').IAppConfig, Joi.Schema>, true>({
-  // Application Core
+
+export const environmentValidationSchema = Joi.object({
+  // Application
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test', 'staging')
-    .default('development') satisfies Joi.StringSchema<NodeEnv>,
+    .default('development'),
   PORT: Joi.number().default(3000),
+  API_GLOBAL_PREFIX: Joi.string().optional().allow(''),
 
-  // Logging
-  LOG_LEVEL: Joi.string()
-    .valid('fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent')
-    .default('info') satisfies Joi.StringSchema<LogLevel>,
-  LOG_REDACTION_PATHS: Joi.string().default('req.headers.authorization,res.headers["set-cookie"]'), // Comma-separated
-  ENABLE_ADVANCED_LOGGING_DETAILS: Joi.boolean().default(false),
-
-  // AWS General
+  // AWS
   AWS_REGION: Joi.string().required(),
-  AWS_ACCOUNT_ID: Joi.string().optional(),
+  AWS_ACCESS_KEY_ID: Joi.string().optional(),
+  AWS_SECRET_ACCESS_KEY: Joi.string().optional(),
+  AWS_SESSION_TOKEN: Joi.string().optional(),
 
-  // Secrets Management
-  SECRETS_MANAGER_ENDPOINT_URL: Joi.string().uri().optional(),
-  SECRETS_CACHE_TTL_SECONDS: Joi.number().integer().min(0).default(300), // 5 minutes
 
-  // Parameter Store
-  USE_PARAMETER_STORE_FOR_NON_SENSITIVE_CONFIG: Joi.boolean().default(false),
-  SSM_PARAMETER_PREFIX: Joi.string().when('USE_PARAMETER_STORE_FOR_NON_SENSITIVE_CONFIG', {
+  // Database (PostgreSQL - TypeORM)
+  DB_TYPE: Joi.string().valid('postgres').default('postgres'),
+  DB_HOST: Joi.string().required(),
+  DB_PORT: Joi.number().default(5432),
+  DB_USERNAME: Joi.string().required(),
+  DB_DATABASE: Joi.string().required(),
+  DB_PASSWORD_SECRET_NAME: Joi.string().required(),
+  DB_SYNCHRONIZE: Joi.boolean().default(false),
+  DB_LOGGING: Joi.string() // Comma-separated list e.g. "query,error"
+    .optional()
+    .default('')
+    .custom((value: string, helpers) => {
+      if (!value) return [];
+      const validLevels = ['query', 'error', 'schema', 'warn', 'info', 'log', 'migration'];
+      const levels = value.split(',').map(level => level.trim());
+      for (const level of levels) {
+        if (!validLevels.includes(level)) {
+          return helpers.error('any.invalid', { value, message: `Invalid DB_LOGGING level: ${level}` });
+        }
+      }
+      return levels;
+    }),
+  DB_SSL_ENABLED: Joi.boolean().default(false),
+  DB_SSL_REJECT_UNAUTHORIZED: Joi.boolean().optional(),
+  DB_SSL_CA_SECRET_NAME: Joi.string().when('DB_SSL_ENABLED', {
     is: true,
-    then: Joi.string().required(),
-    otherwise: Joi.string().optional(),
+    then: Joi.string().optional(), // Optional if SSL enabled, might use system CAs
+    otherwise: Joi.forbidden(),
   }),
 
-  // Database - TypeORM (PostgreSQL)
-  DB_HOST_SECRET_NAME: Joi.string().required(),
-  DB_PORT_SECRET_NAME: Joi.string().required(),
-  DB_USERNAME_SECRET_NAME: Joi.string().required(),
-  DB_PASSWORD_SECRET_NAME: Joi.string().required(),
-  DB_NAME_SECRET_NAME: Joi.string().required(),
-  DB_CONNECTION_POOL_SIZE: Joi.number().integer().min(1).optional(),
-  DB_CONNECTION_TIMEOUT_MS: Joi.number().integer().min(0).optional(),
-  TYPEORM_SYNCHRONIZE: Joi.boolean().default(false),
-  TYPEORM_LOGGING: Joi.alternatives().try(
-      Joi.boolean(),
-      Joi.string() // Comma-separated list of TypeOrmLogLevel
-    ).default('error'),
-  TYPEORM_MIGRATIONS_RUN: Joi.boolean().default(false),
-  TYPEORM_SSL_REJECT_UNAUTHORIZED: Joi.boolean().default(true),
+  // Database (DynamoDB)
+  DYNAMODB_ENABLE_LOCAL: Joi.boolean().default(false),
+  DYNAMODB_LOCAL_ENDPOINT: Joi.string().when('DYNAMODB_ENABLE_LOCAL', {
+    is: true,
+    then: Joi.string().uri().required(),
+    otherwise: Joi.optional(),
+  }),
 
-
-  // Database - DynamoDB
-  DYNAMODB_ENDPOINT_URL: Joi.string().uri().optional(),
-  ENABLE_DYNAMODB_LOCAL_ENDPOINT: Joi.boolean().default(false),
-  // EXAMPLE_DYNAMODB_TABLE_NAME: Joi.string().optional(),
-
-  // Caching - Redis (ElastiCache)
-  REDIS_HOST_SECRET_NAME: Joi.string().required(),
-  REDIS_PORT_SECRET_NAME: Joi.string().required(),
-  REDIS_PASSWORD_SECRET_NAME: Joi.string().optional().allow(''),
-  REDIS_USE_TLS: Joi.boolean().default(false),
+  // Cache (Redis)
+  REDIS_HOST: Joi.string().required(),
+  REDIS_PORT: Joi.number().default(6379),
+  REDIS_PASSWORD_SECRET_NAME: Joi.string().optional(),
+  REDIS_TLS_ENABLED: Joi.boolean().default(false),
   DEFAULT_CACHE_TTL_SECONDS: Joi.number().integer().min(0).default(3600), // 1 hour
-  ENABLE_REDIS_CACHE_DETAILED_LOGGING: Joi.boolean().default(false),
+  SECRETS_CACHE_TTL_SECONDS: Joi.number().integer().min(0).default(300), // 5 minutes
 
-  // Messaging - SQS
-  SQS_ENDPOINT_URL: Joi.string().uri().optional(),
-  SQS_QUEUE_URL_PREFIX: Joi.string().optional(),
-  // EXAMPLE_SQS_QUEUE_NAME: Joi.string().optional(),
-
-  // Storage - S3
-  S3_ENDPOINT_URL: Joi.string().uri().optional(),
-  S3_DEFAULT_SSE_ALGORITHM: Joi.string()
-    .valid('AES256', 'aws:kms')
-    .optional() satisfies Joi.StringSchema<S3SSEAlgorithm | undefined>,
-  S3_DEFAULT_BUCKET_NAME: Joi.string().required(),
-  S3_ASSETS_BUCKET_NAME: Joi.string().required(),
-  S3_LOGS_BUCKET_NAME: Joi.string().required(),
-  S3_BACKUPS_BUCKET_NAME: Joi.string().required(),
-  S3_PRESIGNED_URL_EXPIRATION_SECONDS: Joi.number().integer().min(1).default(3600),
+  // Logging (Pino)
+  LOG_LEVEL: Joi.string()
+    .valid('fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent')
+    .default('info'),
+  LOG_REDACTION_PATHS: Joi.string() // Comma-separated list
+    .optional()
+    .default('req.headers.authorization,req.headers.cookie,body.password,body.token,body.accessToken,body.refreshToken')
+    .custom((value: string) => value.split(',').map(p => p.trim())),
 
 
-  // HTTP Client
-  HTTP_CLIENT_DEFAULT_TIMEOUT_MS: Joi.number().integer().min(0).default(5000), // 5 seconds
-  HTTP_CLIENT_MAX_REDIRECTS: Joi.number().integer().min(0).default(5),
-
-  // Tracing - AWS X-Ray
+  // Tracing (AWS X-Ray)
+  XRAY_DAEMON_ADDRESS: Joi.string().default('127.0.0.1:2000'),
+  XRAY_CONTEXT_MISSING_STRATEGY: Joi.string()
+    .valid('LOG_ERROR', 'RUNTIME_ERROR')
+    .default('LOG_ERROR'),
   ENABLE_XRAY_TRACING: Joi.boolean().default(false),
   ENABLE_XRAY_TRACING_FULL: Joi.boolean().default(false),
 
-  // Feature Flags - AWS AppConfig
-  ENABLE_FEATURE_FLAGS: Joi.boolean().default(false),
-  FEATURE_FLAGS_APPCONFIG_APP_ID: Joi.string().when('ENABLE_FEATURE_FLAGS', {
-    is: true, then: Joi.string().required(), otherwise: Joi.string().optional(),
+  // S3
+  S3_DEFAULT_BUCKET: Joi.string().required(),
+  S3_ASSETS_BUCKET_NAME: Joi.string().required(),
+  S3_LOGS_BUCKET_NAME: Joi.string().required(),
+  S3_BACKUPS_BUCKET_NAME: Joi.string().required(),
+  S3_DEFAULT_SSE_ALGORITHM: Joi.string()
+    .valid('AES256', 'aws:kms')
+    .default('AES256'),
+  S3_KMS_KEY_ID: Joi.string().when('S3_DEFAULT_SSE_ALGORITHM', {
+    is: 'aws:kms',
+    then: Joi.string().required(),
+    otherwise: Joi.optional(),
   }),
-  FEATURE_FLAGS_APPCONFIG_ENV_ID: Joi.string().when('ENABLE_FEATURE_FLAGS', {
-    is: true, then: Joi.string().required(), otherwise: Joi.string().optional(),
-  }),
-  FEATURE_FLAGS_APPCONFIG_PROFILE_ID: Joi.string().when('ENABLE_FEATURE_FLAGS', {
-    is: true, then: Joi.string().required(), otherwise: Joi.string().optional(),
-  }),
-  FEATURE_FLAGS_POLL_INTERVAL_SECONDS: Joi.number().integer().min(15).default(45),
-  FEATURE_FLAGS_MAX_AGE_SECONDS: Joi.number().integer().min(5).default(30),
+
+  // HTTP Client
+  HTTP_CLIENT_DEFAULT_TIMEOUT_MS: Joi.number().integer().min(0).default(5000),
+
+  // Feature Flags
+  APPCONFIG_APPLICATION_ID: Joi.string().optional(),
+  APPCONFIG_ENVIRONMENT_ID: Joi.string().optional(),
+  APPCONFIG_PROFILE_ID: Joi.string().optional(),
+  FEATURE_FLAG_ENABLE_ADVANCED_LOGGING_DETAILS: Joi.boolean().default(false),
+  FEATURE_FLAG_USE_PARAMETER_STORE_FOR_NON_SENSITIVE_CONFIG: Joi.boolean().default(false),
+  FEATURE_FLAG_ENABLE_DYNAMODB_LOCAL_ENDPOINT: Joi.boolean().default(false), // Duplicate of DYNAMODB_ENABLE_LOCAL, consider merging
+  FEATURE_FLAG_ENABLE_REDIS_CACHE_DETAILED_LOGGING: Joi.boolean().default(false),
 
   // Security
-  CORS_ORIGIN: Joi.alternatives().try(Joi.string(), Joi.boolean()).default('*'), // String can be comma-separated origins
-  GLOBAL_PREFIX: Joi.string().optional().allow(''),
-
-  // API Keys (example)
-  API_KEY_SECRET_NAME: Joi.string().optional(),
+  CORS_ORIGIN: Joi.alternatives()
+    .try(
+        Joi.string().custom((value: string, helpers) => {
+            if (value === '*') return '*';
+            try {
+                const origins = value.split(',').map(o => o.trim());
+                origins.forEach(o => new URL(o)); // validate if URL
+                return origins;
+            } catch (e) {
+                return helpers.error('string.uriCustom', { message: 'Invalid URL in CORS_ORIGIN list' });
+            }
+        }),
+        Joi.boolean()
+    )
+    .default(true), // Default to true to allow all origins, or specify a sensible default like specific domains
+  HELMET_CONFIG: Joi.object().optional(),
 });

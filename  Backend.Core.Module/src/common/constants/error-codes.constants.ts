@@ -1,43 +1,44 @@
 /**
- * @description Standardized error codes for the application.
- * REQ-14-006
+ * @file Defines common error codes used across the application.
+ * @namespace AdManager.Platform.Backend.Core.Common.Constants
+ * @requirement REQ-14-006
  */
-export const enum ErrorCodes {
-  // General Errors
+
+export const enum CommonErrorCodes {
+  // Generic Errors
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
   SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
-  NETWORK_ERROR = 'NETWORK_ERROR',
-  TIMEOUT_ERROR = 'TIMEOUT_ERROR',
+  INTERNAL_SERVER_ERROR = 'INTERNAL_SERVER_ERROR',
 
-  // Validation & Input Errors (400-499)
+  // Validation & Input Errors
   VALIDATION_ERROR = 'VALIDATION_ERROR',
+  INVALID_INPUT = 'INVALID_INPUT',
   BAD_REQUEST = 'BAD_REQUEST',
-  INVALID_PAYLOAD = 'INVALID_PAYLOAD',
-  MISSING_REQUIRED_FIELD = 'MISSING_REQUIRED_FIELD',
-  INVALID_PARAMETER = 'INVALID_PARAMETER', // For query/path params
 
-  // Authentication & Authorization Errors (401, 403)
-  UNAUTHENTICATED = 'UNAUTHENTICATED', // Missing or invalid credentials
-  UNAUTHORIZED = 'UNAUTHORIZED', // Insufficient permissions
+  // Authentication & Authorization Errors
+  UNAUTHENTICATED = 'UNAUTHENTICATED',
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  FORBIDDEN_ACCESS = 'FORBIDDEN_ACCESS',
   TOKEN_EXPIRED = 'TOKEN_EXPIRED',
   INVALID_TOKEN = 'INVALID_TOKEN',
-  FORBIDDEN_RESOURCE = 'FORBIDDEN_RESOURCE',
+  MFA_REQUIRED = 'MFA_REQUIRED',
 
-  // Resource Errors (404, 409)
+  // Resource Errors
   RESOURCE_NOT_FOUND = 'RESOURCE_NOT_FOUND',
   RESOURCE_ALREADY_EXISTS = 'RESOURCE_ALREADY_EXISTS',
-  CONFLICT = 'CONFLICT', // General conflict, e.g., optimistic locking
+  RESOURCE_CONFLICT = 'RESOURCE_CONFLICT', // e.g., optimistic locking failure
 
-  // Server-Side Errors (500-599)
-  INTERNAL_SERVER_ERROR = 'INTERNAL_SERVER_ERROR',
-  DATABASE_ERROR = 'DATABASE_ERROR',
-  CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
+  // External Service Errors
   EXTERNAL_SERVICE_ERROR = 'EXTERNAL_SERVICE_ERROR',
+  EXTERNAL_SERVICE_TIMEOUT = 'EXTERNAL_SERVICE_TIMEOUT',
 
-  // Feature Flag Errors
-  FEATURE_NOT_ENABLED = 'FEATURE_NOT_ENABLED',
+  // Configuration Errors
+  CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
 
-  // Specific Business Logic Errors (Examples - to be defined in respective domains)
-  // CAMPAIGN_CREATION_FAILED = 'CAMPAIGN_CREATION_FAILED',
-  // PRODUCT_OUT_OF_STOCK = 'PRODUCT_OUT_OF_STOCK',
+  // Database Errors
+  DATABASE_ERROR = 'DATABASE_ERROR',
+  TRANSACTION_FAILED = 'TRANSACTION_FAILED',
+
+  // Rate Limiting
+  TOO_MANY_REQUESTS = 'TOO_MANY_REQUESTS',
 }

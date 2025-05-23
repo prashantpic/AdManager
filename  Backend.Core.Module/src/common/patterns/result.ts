@@ -1,160 +1,170 @@
 /**
- * @description Represents a successful outcome of an operation.
+ * @file Implementation of the Result pattern for functional error handling.
+ * @namespace AdManager.Platform.Backend.Core.Common.Patterns
  */
-export class Ok<T, E = never> {
+
+export class Ok<T, E = unknown> {
   public readonly value: T;
+  public readonly isOk = true;
+  public readonly isErr = false;
 
   constructor(value: T) {
     this.value = value;
   }
 
-  public isOk(): this is Ok<T, E> {
-    return true;
-  }
-
-  public isErr(): this is Err<E, T> {
-    return false;
-  }
-
   /**
-   * Unwraps the value. Throws an error if called on an Err.
-   * @throws Error if this is an Err.
+   * Unwraps the value. Throws if it's an Err (though type system prevents this call on Err).
    */
   public unwrap(): T {
     return this.value;
   }
 
   /**
-   * Unwraps the value or returns a default value.
+   * Unwraps the value or returns a default if it's an Err.
    */
   public unwrapOr(_defaultValue: T): T {
     return this.value;
   }
 
   /**
-   * Unwraps the error. Throws an error if called on an Ok.
-   * @throws Error if this is an Ok.
+   * Unwraps the error. Throws if it's an Ok.
    */
   public unwrapErr(): E {
-    throw new Error('Called unwrapErr on an Ok value');
+    throw new Error('Cannot unwrapErr on Ok');
   }
 
   /**
-   * Maps an Ok<T, E> to Ok<U, E> by applying a function to the contained Ok value.
+   * Maps an Ok<T, E> to Ok<U, E> by applying a function to a contained Ok value.
    */
-  public map<U>(fn: (value: T) => U): Result<U, E> {
+  public map<U>(fn: (value: T) => U): Ok<U, E> {
     return new Ok(fn(this.value));
   }
 
   /**
-   * Maps an Ok<T, E> to Ok<T, F> by applying a function to the contained Err value (no-op for Ok).
+   * Maps a Result<T, E> to Result<T, F> by applying a function to a contained Err value.
    */
-  public mapErr<F>(_fn: (error: E) => F): Result<T, F> {
-    return this as unknown as Result<T, F>; // Safe cast as E is never used here
+  public mapErr<F>(_fn: (error: E) => F): Ok<T, F> {
+    // Type assertion needed as TypeScript doesn't know E and F are compatible here
+    // within the context of `this` being Ok<T,E>.
+    // The operation doesn't change the Ok value or its type T.
+    // It only changes the *potential* error type F if this were an Err.
+    return this as unknown as Ok<T, F>;
   }
 
   /**
-   * Calls the provided function `fn` if the result is Ok, otherwise returns the Err value of self.
+   * Calls the provided function with the contained value if Ok, otherwise does nothing.
+   * @param fn The function to call with the value.
+   * @returns The original Ok instance.
    */
-  public andThen<U>(fn: (value: T) => Result<U, E>): Result<U, E> {
-    return fn(this.value);
+  public ifOk(fn: (value: T) => void): this {
+    fn(this.value);
+    return this;
+  }
+
+  /**
+   * Does nothing if Ok.
+   * @param _fn The function to call (not called for Ok).
+   * @returns The original Ok instance.
+   */
+  public ifErr(_fn: (error: E) => void): this {
+    // Do nothing for Ok
+    return this;
   }
 }
 
-/**
- * @description Represents a failed outcome of an operation.
- */
-export class Err<E, T = never> {
+export class Err<E, T = unknown> {
   public readonly error: E;
+  public readonly isOk = false;
+  public readonly isErr = true;
 
   constructor(error: E) {
     this.error = error;
   }
 
-  public isOk(): this is Ok<T, E> {
-    return false;
-  }
-
-  public isErr(): this is Err<E, T> {
-    return true;
-  }
-
   /**
-   * Unwraps the value. Throws an error because this is an Err.
-   * @throws Error (this.error)
+   * Unwraps the value. Throws if it's an Err.
    */
   public unwrap(): T {
-    if (this.error instanceof Error) {
-      throw this.error;
-    }
-    throw new Error(String(this.error) || 'Called unwrap on an Err value');
+    throw this.error instanceof Error
+      ? this.error
+      : new Error(`Tried to unwrap an Err value: ${JSON.stringify(this.error)}`);
   }
 
   /**
-   * Unwraps the value or returns a default value.
+   * Unwraps the value or returns a default if it's an Err.
    */
   public unwrapOr(defaultValue: T): T {
     return defaultValue;
   }
 
   /**
-   * Unwraps the error.
+   * Unwraps the error. Throws if it's an Ok (though type system prevents this call on Ok).
    */
   public unwrapErr(): E {
     return this.error;
   }
 
   /**
-   * Maps an Err<E, T> to Err<E, U> by applying a function to the contained Ok value (no-op for Err).
+   * Maps an Err<E, T> to Err<E, U> by applying a function to a contained Ok value.
+   * This does nothing for Err, just returns itself.
    */
-  public map<U>(_fn: (value: T) => U): Result<U, E> {
-    return this as unknown as Result<U, E>; // Safe cast as T is never used here
+  public map<U>(_fn: (value: T) => U): Err<E, U> {
+    // Type assertion similar to Ok.mapErr
+    return this as unknown as Err<E, U>;
   }
 
   /**
-   * Maps an Err<E, T> to Err<F, T> by applying a function to the contained Err value.
+   * Maps a Result<T, E> to Result<T, F> by applying a function to a contained Err value.
    */
-  public mapErr<F>(fn: (error: E) => F): Result<T, F> {
+  public mapErr<F>(fn: (error: E) => F): Err<F, T> {
     return new Err(fn(this.error));
   }
 
   /**
-   * Calls the provided function `fn` if the result is Ok (no-op for Err), otherwise returns the Err value of self.
+   * Does nothing if Err.
+   * @param _fn The function to call (not called for Err).
+   * @returns The original Err instance.
    */
-  public andThen<U>(_fn: (value: T) => Result<U, E>): Result<U, E> {
-    return this as unknown as Result<U, E>;
+  public ifOk(_fn: (value: T) => void): this {
+    // Do nothing for Err
+    return this;
+  }
+
+  /**
+   * Calls the provided function with the contained error if Err, otherwise does nothing.
+   * @param fn The function to call with the error.
+   * @returns The original Err instance.
+   */
+  public ifErr(fn: (error: E) => void): this {
+    fn(this.error);
+    return this;
   }
 }
 
-/**
- * @description Represents a value that is either a success (Ok) or a failure (Err).
- */
 export type Result<T, E> = Ok<T, E> | Err<E, T>;
 
-/**
- * Helper function to create an Ok result.
- */
-export function ok<T, E = never>(value: T): Ok<T, E> {
-  return new Ok(value);
-}
+export const ResultUtils = {
+  ok: <T, E = unknown>(value: T): Ok<T, E> => new Ok(value),
+  err: <E, T = unknown>(error: E): Err<E, T> => new Err(error),
 
-/**
- * Helper function to create an Err result.
- */
-export function err<E, T = never>(error: E): Err<E, T> {
-  return new Err(error);
-}
+  isOk: <T, E>(result: Result<T, E>): result is Ok<T, E> => result.isOk,
+  isErr: <T, E>(result: Result<T, E>): result is Err<E, T> => result.isErr,
 
-/**
- * Type guard to check if a Result is Ok.
- */
-export function isOk<T, E>(result: Result<T, E>): result is Ok<T, E> {
-  return result.isOk();
-}
-
-/**
- * Type guard to check if a Result is Err.
- */
-export function isErr<T, E>(result: Result<T, E>): result is Err<E, T> {
-  return result.isErr();
-}
+  /**
+   * Combines an array of Results into a single Result.
+   * If all Results in the array are Ok, it returns an Ok with an array of all values.
+   * If any Result in the array is an Err, it returns the first Err encountered.
+   * @param results An array of Result<T, E> objects.
+   * @returns A Result<T[], E>.
+   */
+  combine: <T, E>(results: Result<T, E>[]): Result<T[], E> => {
+    const values: T[] = [];
+    for (const result of results) {
+      if (ResultUtils.isErr(result)) {
+        return result;
+      }
+      values.push(result.unwrap());
+    }
+    return ResultUtils.ok(values);
+  },
+};
