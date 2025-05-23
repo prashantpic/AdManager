@@ -1,88 +1,68 @@
-import { NestFactory, HttpAdapterHost } from '@nestjs/core';
-import { AppModule } from './app.module'; // Assuming AppModule is your root application module
-import { CoreConfigService } from './config/config.service';
-import { LoggingService } from './logging/logging.service';
-import { GlobalValidationPipe } from './common/pipes/global-validation.pipe';
-import { GlobalHttpExceptionFilter } from './common/exceptions/http-exception.filter';
-import { TracingInterceptor } from './tracing/tracing.interceptor';
-import { INestApplication, LoggerService } from '@nestjs/common';
-import { LOGGER_P_TOKEN, PinoLogger } from 'nestjs-pino';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { CoreConfigService } from './core/config/config.service';
+import { LoggingService } from './core/logging/logging.service';
+import { GlobalValidationPipe } from './core/common/pipes/global-validation.pipe';
+import { GlobalHttpExceptionFilter } from './core/common/exceptions/http-exception.filter';
+import { TracingInterceptor } from './core/tracing/tracing.interceptor';
+import { INestApplication, Logger } from '@nestjs/common';
+import { ValidationException } from './core/common/exceptions/validation.exception';
 
 async function bootstrap() {
   const app: INestApplication = await NestFactory.create(AppModule, {
-    bufferLogs: true, // Buffer logs until pino logger is initialized
+    bufferLogs: true, // Buffer logs until our custom logger is ready
   });
 
-  // Setup Custom Structured Logger (Pino)
-  // If using nestjs-pino, the logger is available via injection or app.get(LOGGER_P_TOKEN)
-  // If LoggingService is a wrapper, use app.get(LoggingService)
-  // The SDS mentions LoggingService wrapping the logger.
-  // If LoggingService itself is the NestJS LoggerService implementation:
-  const appLogger: LoggerService = app.get(LoggingService);
+  // Initialize and use our custom structured logger
+  // LoggingService is provided by CoreModule, which is imported by AppModule
+  const appLogger = app.get(LoggingService);
   app.useLogger(appLogger);
 
-  // Or if using nestjs-pino directly and LoggingService is just a utility for specific logs:
-  // const pinoLogger = app.get<PinoLogger>(LOGGER_P_TOKEN);
-  // app.useLogger(pinoLogger);
-  // For consistency with SDS LoggingService, we assume it's the primary logger.
-
+  // Retrieve CoreConfigService for application configurations
+  // CoreConfigService is provided by CoreModule
   const configService = app.get(CoreConfigService);
-  const httpAdapterHost = app.get(HttpAdapterHost);
 
-  // Global Pipes
-  // REQ-15-013: Validate incoming DTOs
-  // REQ-14-006: Standardized input validation
-  app.useGlobalPipes(
-    new GlobalValidationPipe({
-      transform: true, // Automatically transform payloads to DTO instances
-      whitelist: true, // Strip properties not defined in DTO
-      forbidNonWhitelisted: true, // Throw error if non-whitelisted properties are present
-      // exceptionFactory is handled within GlobalValidationPipe to throw ValidationException
-    }),
-  );
+  // Global Prefix (e.g., '/api')
+  const globalPrefix = configService.get('GLOBAL_PREFIX') || 'api';
+  app.setGlobalPrefix(globalPrefix);
+  appLogger.log(`Global prefix set to '/${globalPrefix}'`, 'Bootstrap');
 
-  // Global Filters
-  // REQ-14-006: Standardized JSON error responses
-  // REQ-16-025: Log errors consistently
-  app.useGlobalFilters(new GlobalHttpExceptionFilter(httpAdapterHost, appLogger));
+  // CORS Configuration
+  // TODO: Configure CORS more restrictively based on specific requirements (e.g., origin, methods)
+  app.enableCors();
+  appLogger.log('CORS enabled with default settings', 'Bootstrap');
 
-  // Global Interceptors
-  // REQ-11-017: Distributed tracing setup
-  // REQ-16-027: Distributed tracing setup
-  // REQ-16-025: Contextual information for logging (trace IDs)
-  app.useGlobalInterceptors(new TracingInterceptor()); // TracingInterceptor uses AWS X-Ray SDK internally
+  // Apply Global Pipes
+  // GlobalValidationPipe should be configured internally as per SDS 5.6
+  // It will use class-validator and class-transformer, and throw ValidationException
+  app.useGlobalPipes(new GlobalValidationPipe());
+  appLogger.log('GlobalValidationPipe applied', 'Bootstrap');
 
-  // CORS Configuration (example, adjust as needed)
-  app.enableCors({
-    origin: configService.get('CORS_ORIGIN') || '*', // Configure allowed origins
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
-  });
+  // Apply Global Filters
+  // GlobalHttpExceptionFilter requires LoggingService for logging errors
+  app.useGlobalFilters(new GlobalHttpExceptionFilter(appLogger));
+  appLogger.log('GlobalHttpExceptionFilter applied', 'Bootstrap');
 
-  // Global API Prefix (example, adjust as needed)
-  const globalPrefix = configService.get('GLOBAL_API_PREFIX');
-  if (globalPrefix) {
-    app.setGlobalPrefix(globalPrefix);
-  }
+  // Apply Global Interceptors
+  // TracingInterceptor handles distributed tracing setup for requests
+  app.useGlobalInterceptors(new TracingInterceptor()); // Assuming TracingInterceptor initializes X-Ray or uses global SDK
+  appLogger.log('TracingInterceptor applied', 'Bootstrap');
 
-  // Graceful Shutdown
+  // Enable Graceful Shutdown Hooks
   app.enableShutdownHooks();
+  appLogger.log('Shutdown hooks enabled', 'Bootstrap');
 
+  // Get port from configuration
   const port = configService.getPort();
-  await app.listen(port);
 
-  appLogger.log(
-    `Application '${configService.get('APP_NAME') || 'AdManager Platform'}' is running on: ${await app.getUrl()}`,
-    'Bootstrap',
-  );
-  appLogger.log(
-    `Environment: ${configService.getNodeEnv()}`,
-    'Bootstrap',
-  );
+  await app.listen(port);
+  appLogger.log(`Application listening on port ${port}`, 'Bootstrap');
+  appLogger.log(`Application running in ${configService.getNodeEnv()} mode`, 'Bootstrap');
 }
 
-bootstrap().catch((error) => {
-  // Use a fallback logger for bootstrap errors if the app logger isn't available
-  console.error('Error during application bootstrap:', error);
+bootstrap().catch(error => {
+  // Fallback logger if custom logger isn't available or fails
+  const fallbackLogger = new Logger('BootstrapError');
+  fallbackLogger.error('Application failed to bootstrap:', error);
   process.exit(1);
 });
