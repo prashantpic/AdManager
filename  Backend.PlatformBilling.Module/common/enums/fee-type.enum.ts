@@ -1,0 +1,4 @@
+export enum FeeType {
+  PERCENTAGE = 'PERCENTAGE',
+  FIXED_AMOUNT = 'FIXED_AMOUNT',
+}
