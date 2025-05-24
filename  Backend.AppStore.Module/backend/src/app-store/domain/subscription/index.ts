@@ -1,0 +1,1 @@
+export * from './entities/app-merchant-subscription.entity';
