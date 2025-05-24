@@ -1,0 +1,40 @@
+```json
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "assets": [],
+    "watchAssets": true,
+    "builder": "@nestjs/cli:swc",
+    "swc": {
+      "jsc": {
+        "parser": {
+          "syntax": "typescript"
+        },
+        "target": "es2021",
+        "keepClassNames": true,
+        "paths": {
+           "@order/*": [
+             "src/*"
+           ],
+           "@core/*": [
+             "../core/src/*"
+           ]
+        }
+      }
+    }
+  },
+  "projects": {
+    "order": {
+      "type": "library",
+      "root": "src", 
+      "entryFile": "index", 
+      "compilerOptions": {
+        "tsConfigFilePath": "tsconfig.json"
+      }
+    }
+  }
+}
+```
