@@ -20,91 +20,97 @@ export class SesAdapter {
   private readonly configurationSetName?: string;
 
   constructor(
-    @Inject(notificationConfig.KEY) private readonly notifConfig: NotificationConfig,
+    @Inject(ConfigService) private readonly configService: ConfigService<NotificationConfig>,
     @Inject(Logger) private readonly logger: Logger,
   ) {
-    const region = this.notifConfig.ses.region || this.notifConfig.awsRegion;
-    this.sesClient = new SESClient({
-      region: region,
-      // Credentials should be handled by the execution environment (e.g., IAM role)
-    });
-    this.defaultSender = this.notifConfig.ses.defaultSender || DEFAULT_SES_SENDER_FALLBACK;
-    this.configurationSetName = this.notifConfig.ses.configurationSetName;
+    const notificationConfigValues = this.configService.get<NotificationConfig['ses']>('ses', { infer: true });
+    const rootAwsRegion = this.configService.get<string>('awsRegion', { infer: true });
 
-    this.logger.log(`SesAdapter initialized. Region: ${region}, Default Sender: ${this.defaultSender}, ConfigSet: ${this.configurationSetName || 'N/A'}`, SesAdapter.name);
+    const region = notificationConfigValues.region || rootAwsRegion;
+    this.defaultSender = notificationConfigValues.defaultSender || DEFAULT_SES_SENDER_FALLBACK;
+    this.configurationSetName = notificationConfigValues.configurationSetName;
+
+    if (!region) {
+      const errorMsg = 'AWS region for SES is not configured.';
+      this.logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    if (!this.defaultSender) {
+        const errorMsg = 'Default SES sender email is not configured.';
+        this.logger.error(errorMsg);
+        throw new Error(errorMsg);
+    }
+
+    this.sesClient = new SESClient({ region });
+    this.logger.log(`SesAdapter initialized. Region: ${region}, Default Sender: ${this.defaultSender}, ConfigSet: ${this.configurationSetName || 'N/A'}`);
   }
 
   async sendEmail(params: IEmailNotificationParams): Promise<{ messageId?: string; error?: any; statusCode?: number }> {
-    this.logger.log(`Attempting to send email. Subject: ${params.subject}, To: ${params.to.join(', ')}`, SesAdapter.name);
+    this.logger.log(`Attempting to send email via SES. Subject: ${params.subject}, To: ${params.to.join(', ')}`);
 
-    const sourceEmail = params.from || this.defaultSender;
+    const source = params.from || this.defaultSender;
 
     try {
+      let response: SendEmailCommandOutput | SendTemplatedEmailCommandOutput;
+
       if (params.templateId) {
+        if (!params.templateData) {
+            this.logger.warn(`Sending templated email without templateData for templateId: ${params.templateId}`);
+        }
         const commandInput: SendTemplatedEmailCommandInput = {
-          Source: sourceEmail,
-          Destination: {
-            ToAddresses: params.to,
-            CcAddresses: [], // Add if needed
-            BccAddresses: [], // Add if needed
-          },
-          ReplyToAddresses: params.replyTo,
+          Source: source,
+          Destination: { ToAddresses: params.to },
           Template: params.templateId,
-          TemplateData: params.templateData ? JSON.stringify(params.templateData) : '{}',
-          ConfigurationSetName: params.configurationSetName || this.configurationSetName,
+          TemplateData: JSON.stringify(params.templateData || {}),
         };
-        const command = new SendTemplatedEmailCommand(commandInput);
-        const result: SendTemplatedEmailCommandOutput = await this.sesClient.send(command);
-        this.logger.log(`Templated email sent successfully. MessageId: ${result.MessageId}`, SesAdapter.name);
-        return { messageId: result.MessageId, statusCode: result.$metadata.httpStatusCode };
-      } else {
-        const commandInput: SendEmailCommandInput = {
-          Source: sourceEmail,
-          Destination: {
-            ToAddresses: params.to,
-            CcAddresses: [], // Add if needed
-            BccAddresses: [], // Add if needed
-          },
-          ReplyToAddresses: params.replyTo,
-          Message: {
-            Subject: {
-              Data: params.subject,
-              Charset: 'UTF-8',
-            },
-            Body: {},
-          },
-          ConfigurationSetName: params.configurationSetName || this.configurationSetName,
-        };
-
-        if (params.textBody) {
-          commandInput.Message.Body.Text = {
-            Data: params.textBody,
-            Charset: 'UTF-8',
-          };
+        if (params.replyTo && params.replyTo.length > 0) {
+          commandInput.ReplyToAddresses = params.replyTo;
         }
+        if (params.configurationSetName || this.configurationSetName) {
+            commandInput.ConfigurationSetName = params.configurationSetName || this.configurationSetName;
+        }
+        this.logger.debug('Sending templated email with input:', JSON.stringify(commandInput, null, 2));
+        response = await this.sesClient.send(new SendTemplatedEmailCommand(commandInput));
+
+      } else if (params.htmlBody || params.textBody) {
+        const messageBody: SendEmailCommandInput['Message']['Body'] = {};
         if (params.htmlBody) {
-          commandInput.Message.Body.Html = {
-            Data: params.htmlBody,
-            Charset: 'UTF-8',
-          };
+          messageBody.Html = { Data: params.htmlBody, Charset: 'UTF-8' };
+        }
+        if (params.textBody) {
+          messageBody.Text = { Data: params.textBody, Charset: 'UTF-8' };
         }
 
-        if (!params.textBody && !params.htmlBody) {
-          const errorMsg = 'Email must contain either textBody or htmlBody if not using a template.';
-          this.logger.error(errorMsg, SesAdapter.name);
-          return { error: { message: errorMsg }, statusCode: 400 };
+        const commandInput: SendEmailCommandInput = {
+          Source: source,
+          Destination: { ToAddresses: params.to },
+          Message: {
+            Subject: { Data: params.subject, Charset: 'UTF-8' },
+            Body: messageBody,
+          },
+        };
+        if (params.replyTo && params.replyTo.length > 0) {
+          commandInput.ReplyToAddresses = params.replyTo;
         }
-
-        const command = new SendEmailCommand(commandInput);
-        const result: SendEmailCommandOutput = await this.sesClient.send(command);
-        this.logger.log(`Raw email sent successfully. MessageId: ${result.MessageId}`, SesAdapter.name);
-        return { messageId: result.MessageId, statusCode: result.$metadata.httpStatusCode };
+        if (params.configurationSetName || this.configurationSetName) {
+            commandInput.ConfigurationSetName = params.configurationSetName || this.configurationSetName;
+        }
+        this.logger.debug('Sending raw email with input:', JSON.stringify(commandInput, null, 2));
+        response = await this.sesClient.send(new SendEmailCommand(commandInput));
+      } else {
+        const errorMsg = 'SES sendEmail requires either templateId or htmlBody/textBody.';
+        this.logger.error(errorMsg);
+        return { error: new Error(errorMsg), statusCode: 400 };
       }
+
+      this.logger.log(`SES email sent successfully. MessageId: ${response.MessageId}`);
+      return { messageId: response.MessageId, statusCode: response.$metadata.httpStatusCode };
+
     } catch (error) {
-      this.logger.error(`Error sending email via SES: ${error.message}`, error.stack, SesAdapter.name);
+      this.logger.error(`Failed to send SES email. Subject: ${params.subject}. Error: ${error.message}`, error.stack);
       return {
-        error: { message: error.message, name: error.name, stack: error.stack },
-        statusCode: error.$metadata?.httpStatusCode || 500,
+        error: { name: error.name, message: error.message, stack: error.stack },
+        statusCode: error.$metadata?.httpStatusCode,
       };
     }
   }

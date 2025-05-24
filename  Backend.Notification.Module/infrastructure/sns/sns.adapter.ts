@@ -16,56 +16,70 @@ export class SnsAdapter {
   private readonly snsClient: SNSClient;
 
   constructor(
-    @Inject(notificationConfig.KEY) private readonly notifConfig: NotificationConfig,
+    @Inject(ConfigService) private readonly configService: ConfigService<NotificationConfig>,
     @Inject(Logger) private readonly logger: Logger,
   ) {
-    const region = this.notifConfig.sns.region || this.notifConfig.awsRegion;
-    this.snsClient = new SNSClient({
-      region: region,
-      // Credentials should be handled by the execution environment (e.g., IAM role)
-    });
-    this.logger.log(`SnsAdapter initialized. Region: ${region}`, SnsAdapter.name);
+    const notificationConfigValues = this.configService.get<NotificationConfig['sns']>('sns', { infer: true });
+    const rootAwsRegion = this.configService.get<string>('awsRegion', { infer: true });
+    
+    const region = notificationConfigValues.region || rootAwsRegion;
+
+    if (!region) {
+      const errorMsg = 'AWS region for SNS is not configured.';
+      this.logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    this.snsClient = new SNSClient({ region });
+    this.logger.log(`SnsAdapter initialized. Region: ${region}`);
   }
 
   async publishEvent(params: IEventNotificationParams): Promise<{ messageId?: string; error?: any; statusCode?: number }> {
-    this.logger.log(`Attempting to publish event to SNS Topic: ${params.topicArn}`, SnsAdapter.name);
-
-    // AWS SDK v3 requires specific structure for MessageAttributes
-    let awsMessageAttributes: Record<string, MessageAttributeValue> | undefined = undefined;
-    if (params.messageAttributes) {
-        awsMessageAttributes = {};
-        for (const key in params.messageAttributes) {
-            if (Object.prototype.hasOwnProperty.call(params.messageAttributes, key)) {
-                const attr = params.messageAttributes[key];
-                awsMessageAttributes[key] = {
-                    DataType: attr.DataType,
-                    StringValue: attr.StringValue,
-                    BinaryValue: attr.BinaryValue, // Ensure this is Uint8Array if provided
-                    StringListValues: attr.StringArrayValue, // AWS SDK v3 uses StringListValues for String.Array
-                };
-            }
-        }
-    }
+    this.logger.log(`Attempting to publish event to SNS topic: ${params.topicArn}`);
 
     const commandInput: PublishCommandInput = {
       TopicArn: params.topicArn,
-      Message: params.message, // Message is already stringified in the service
-      Subject: params.subject?.substring(0, MAX_SNS_SUBJECT_LENGTH),
-      MessageAttributes: awsMessageAttributes,
-      MessageDeduplicationId: params.messageDeduplicationId,
-      MessageGroupId: params.messageGroupId,
+      Message: params.message,
     };
 
+    if (params.subject) {
+      commandInput.Subject = params.subject.substring(0, MAX_SNS_SUBJECT_LENGTH);
+    }
+
+    if (params.messageAttributes) {
+        commandInput.MessageAttributes = Object.entries(params.messageAttributes).reduce((acc, [key, value]) => {
+            const attributeValue: MessageAttributeValue = { DataType: value.DataType };
+            if (value.DataType === 'String' && value.StringValue !== undefined) {
+                attributeValue.StringValue = value.StringValue;
+            } else if (value.DataType === 'Binary' && value.BinaryValue !== undefined) {
+                attributeValue.BinaryValue = value.BinaryValue;
+            } else if (value.DataType === 'Number' && value.StringValue !== undefined) { // SNS Number type is sent as String
+                attributeValue.StringValue = value.StringValue;
+            } else if (value.DataType === 'String.Array' && value.StringArrayValue !== undefined) {
+                attributeValue.StringValue = JSON.stringify(value.StringArrayValue); // String.Array is sent as a JSON string
+            }
+            acc[key] = attributeValue;
+            return acc;
+        }, {} as Record<string, MessageAttributeValue>);
+    }
+
+    if (params.messageDeduplicationId) {
+      commandInput.MessageDeduplicationId = params.messageDeduplicationId;
+    }
+    if (params.messageGroupId) {
+      commandInput.MessageGroupId = params.messageGroupId;
+    }
+
     try {
-      const command = new PublishCommand(commandInput);
-      const result: PublishCommandOutput = await this.snsClient.send(command);
-      this.logger.log(`Event published successfully to SNS. MessageId: ${result.MessageId}`, SnsAdapter.name);
-      return { messageId: result.MessageId, statusCode: result.$metadata.httpStatusCode };
+      this.logger.debug('Publishing SNS event with input:', JSON.stringify(commandInput, null, 2));
+      const response: PublishCommandOutput = await this.snsClient.send(new PublishCommand(commandInput));
+      this.logger.log(`SNS event published successfully. MessageId: ${response.MessageId}`);
+      return { messageId: response.MessageId, statusCode: response.$metadata.httpStatusCode };
     } catch (error) {
-      this.logger.error(`Error publishing event to SNS: ${error.message}`, error.stack, SnsAdapter.name);
+      this.logger.error(`Failed to publish SNS event to topic ${params.topicArn}. Error: ${error.message}`, error.stack);
       return {
-        error: { message: error.message, name: error.name, stack: error.stack },
-        statusCode: error.$metadata?.httpStatusCode || 500,
+        error: { name: error.name, message: error.message, stack: error.stack },
+        statusCode: error.$metadata?.httpStatusCode,
       };
     }
   }
