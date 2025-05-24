@@ -11,20 +11,14 @@ import {
 } from 'class-validator';
 
 export class SendEmailDto {
-  @ValidateIf(o => typeof o.to === 'string')
-  @IsEmail()
-  @IsNotEmpty()
-  to_string_version?: string; // Helper for conditional validation
-
   @ValidateIf(o => Array.isArray(o.to))
   @IsArray()
   @ArrayNotEmpty()
   @IsEmail({}, { each: true })
-  to_array_version?: string[]; // Helper for conditional validation
+  // Property 'to' is defined below
 
-  // Actual 'to' field. Validation is handled by the above helpers and a custom validator or transform if needed.
-  // For simplicity here, we'll assume the input will be one or the other, and the service layer will handle it.
-  // A more robust solution might involve a custom validator on 'to' itself.
+  @ValidateIf(o => typeof o.to === 'string')
+  @IsEmail()
   @IsNotEmpty()
   to: string | string[];
 
@@ -33,17 +27,16 @@ export class SendEmailDto {
   from?: string;
 
   @IsOptional()
-  @ValidateIf(o => typeof o.replyTo === 'string')
-  @IsEmail()
-  replyTo_string_version?: string; // Helper
-
-  @IsOptional()
   @ValidateIf(o => Array.isArray(o.replyTo))
   @IsArray()
+  // Note: ArrayNotEmpty is not specified for replyTo in its decorators ["IsOptional()","IsArray() || IsEmail()"]
+  // So, an empty array would be permissible if 'replyTo' is an array.
   @IsEmail({}, { each: true })
-  replyTo_array_version?: string[]; // Helper
+  // Property 'replyTo' is defined below
 
   @IsOptional()
+  @ValidateIf(o => typeof o.replyTo === 'string' && o.replyTo !== undefined)
+  @IsEmail()
   replyTo?: string | string[];
 
   @IsString()
@@ -59,17 +52,11 @@ export class SendEmailDto {
   @IsString()
   htmlBody?: string;
 
-  /**
-   * Identifier for SES template
-   */
   @IsOptional()
   @IsString()
-  templateId?: string;
+  templateId?: string; // Identifier for SES template
 
-  /**
-   * Data for SES template
-   */
   @IsOptional()
   @IsObject()
-  templateData?: Record<string, any>;
+  templateData?: Record<string, any>; // Data for SES template
 }

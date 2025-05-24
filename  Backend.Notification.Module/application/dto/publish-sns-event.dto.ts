@@ -10,9 +10,7 @@ import {
 export class PublishSnsEventDto {
   @IsString()
   @IsNotEmpty()
-  @Matches(/^arn:aws:sns:.*$/, {
-    message: 'topicArn must be a valid AWS SNS Topic ARN',
-  })
+  @Matches(/^arn:aws:sns:.*$/, { message: 'topicArn must be a valid AWS SNS Topic ARN' })
   topicArn: string;
 
   @IsNotEmpty()
@@ -25,13 +23,10 @@ export class PublishSnsEventDto {
 
   @IsOptional()
   @IsObject()
-  messageAttributes?: Record<
-    string,
-    {
-      DataType: 'String' | 'Number' | 'Binary' | 'String.Array';
-      StringValue?: string;
-      BinaryValue?: Buffer; // For AWS SDK v3, this should be Uint8Array. class-validator doesn't directly validate Buffer/Uint8Array type.
-      StringArrayValue?: string[];
-    }
-  >;
+  messageAttributes?: Record<string, {
+    DataType: 'String' | 'Number' | 'Binary' | 'String.Array';
+    StringValue?: string;
+    BinaryValue?: Buffer;
+    StringArrayValue?: string[];
+  }>;
 }
