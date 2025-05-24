@@ -1,0 +1,33 @@
+```json
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "forceConsistentCasingInFileNames": false,
+    "noFallthroughCasesInSwitch": false,
+    "lib": ["es2021", "dom"],
+    "rootDir": "src",
+    "paths": {
+      "@app-store/*": ["src/*"],
+      "@app-store/common/*": ["src/common/*"],
+      "@app-store/domain/*": ["src/domain/*"],
+      "@app-store/application/*": ["src/application/*"],
+      "@app-store/infrastructure/*": ["src/infrastructure/*"],
+      "@app-store/presentation/*": ["src/presentation/*"]
+    }
+  }
+}
+```
